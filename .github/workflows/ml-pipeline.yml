@@ -30,11 +30,73 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read
     outputs:
       pipeline_execution_arn: ${{ steps.start.outputs.pipeline_execution_arn }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Wait for Terraform workflow (mixed infra + ML commits)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo "Not a push event; skip waiting for Terraform."
+            exit 0
+          fi
+
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            FILES=$(git diff --name-only HEAD~1 HEAD)
+          else
+            FILES=$(git ls-tree -r --name-only HEAD)
+          fi
+
+          HAS_TF=false
+          HAS_ML=false
+          echo "$FILES" | grep -q '^terraform/' && HAS_TF=true || true
+          echo "$FILES" | grep -qE '^(training|pipeline)/' && HAS_ML=true || true
+
+          if [ "$HAS_TF" != "true" ] || [ "$HAS_ML" != "true" ]; then
+            echo "Commit does not change both terraform/ and training|pipeline/; skip Terraform wait."
+            exit 0
+          fi
+
+          echo "Mixed infra + ML commit: waiting for Terraform workflow to succeed before SageMaker steps."
+          SHA="${GITHUB_SHA}"
+
+          for i in $(seq 1 120); do
+            JSON=$(curl -sS \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=50")
+
+            STATUS=$(echo "$JSON" | jq -r --arg path ".github/workflows/infra.yml" \
+              '[.workflow_runs[] | select(.path == $path)] | sort_by(.created_at) | reverse | .[0] |
+              if . == null then "none" else .status end')
+            CONCLUSION=$(echo "$JSON" | jq -r --arg path ".github/workflows/infra.yml" \
+              '[.workflow_runs[] | select(.path == $path)] | sort_by(.created_at) | reverse | .[0] |
+              if . == null then "none" else (.conclusion // "") end')
+
+            echo "Poll $i/120: Terraform workflow status=${STATUS} conclusion=${CONCLUSION}"
+
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCLUSION" = "success" ]; then
+                echo "Terraform workflow succeeded."
+                exit 0
+              fi
+              echo "Terraform workflow finished without success (conclusion=${CONCLUSION}). Aborting ML pipeline."
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          echo "Timed out waiting for Terraform workflow."
+          exit 1
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
