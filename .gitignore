@@ -37,6 +37,8 @@ terraform.rc
 *.tfvars.json
 # Allow committed root defaults; use e.g. secrets.tfvars (gitignored) for local overrides.
 !terraform/terraform.tfvars
+# Local copy of CI bootstrap IAM policy (may include account IDs / ARNs).
+terraform/policies/
 
 # Project-local
 PROMPTS.md
