@@ -21,7 +21,7 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 ## Configure Terraform
 
 1. In `terraform/backend.tf`, replace `YOUR_TERRAFORM_CLOUD_ORG` with your Terraform Cloud organization and adjust the `workspaces` `name` if needed.
-2. Optional: create `terraform/terraform.tfvars` (gitignored) to override `github_org` / `github_repo` and other variables.
+2. Edit `terraform/terraform.tfvars` (tracked in git with defaults) for shared settings such as `github_org`, `github_repo`, `environment`, or region. Terraform loads it automatically in the `terraform/` directory, including in GitHub Actions. For sensitive or personal overrides, keep a separate file (e.g. `terraform/secrets.tfvars`, gitignored) and run with `-var-file=secrets.tfvars`.
 3. Set `TF_TOKEN_app_terraform_io` (or `TF_TOKEN`) locally when running Terraform against the remote backend.
 
 ## GitHub Actions secrets (documented)
@@ -65,26 +65,6 @@ python training/train.py  # writes to SM paths if unset; uses synthetic data
 - **Training** (SDK / pipeline): **ml.m5.xlarge**, **spot** enabled in `pipeline/definition.py` and reflected in comments.
 - **Hosting** (Terraform `aws_sagemaker_endpoint`): **ml.t2.medium** on the endpoint configuration.
 
-## Git (first-time setup)
-
-Initial commit and default branch **`develop`**:
-
-```bash
-chmod +x scripts/init-git.sh
-./scripts/init-git.sh
-```
-
-Or manually:
-
-```bash
-git init -b develop
-git add -A
-git commit -m "Initial commit"
-git remote add origin <YOUR_REPO_HTTPS_OR_SSH>
-git push -u origin develop
-```
-
-On GitHub: **Settings → General → Default branch** → set to `develop`. Workflows run on **`main`** and **`develop`**; the gated `terraform-apply` job still runs only on pushes to **`main`**.
 
 ## License
 

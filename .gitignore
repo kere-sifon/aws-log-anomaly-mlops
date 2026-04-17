@@ -35,6 +35,8 @@ terraform.rc
 .terraform.tfvars
 *.tfvars
 *.tfvars.json
+# Allow committed root defaults; use e.g. secrets.tfvars (gitignored) for local overrides.
+!terraform/terraform.tfvars
 
 # OS / editor
 .DS_Store
