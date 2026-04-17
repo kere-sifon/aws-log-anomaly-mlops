@@ -36,8 +36,8 @@ variable "github_actions_ref_filter" {
 
 variable "github_oidc_provider_use_existing" {
   type        = bool
-  description = "If true, use the account's existing GitHub Actions OIDC provider (https://token.actions.githubusercontent.com) instead of creating it. Set true when CreateOpenIDConnectProvider fails with EntityAlreadyExists (provider was created earlier or outside this state)."
-  default     = false
+  description = "If true, use the account's existing GitHub Actions OIDC provider (https://token.actions.githubusercontent.com) instead of creating it. Default true because many accounts already register this URL once; set false only for a brand-new account with no GitHub OIDC provider yet."
+  default     = true
 }
 
 variable "sagemaker_endpoint_instance_type" {

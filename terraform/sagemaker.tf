@@ -30,6 +30,9 @@ resource "aws_sagemaker_endpoint_configuration" "log_anomaly_endpoint_config" {
     initial_instance_count = 1
     instance_type          = "ml.t2.medium"
     initial_variant_weight = 1
+    # Defaults are short; first-time image pull + model load can exceed them and surface as ping failures.
+    model_data_download_timeout_in_seconds       = 900
+    container_startup_health_check_timeout_in_seconds = 900
   }
 
   tags = local.default_tags

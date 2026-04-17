@@ -21,8 +21,13 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 ## Configure Terraform
 
 1. In `terraform/backend.tf`, replace `YOUR_TERRAFORM_CLOUD_ORG` with your Terraform Cloud organization and adjust the `workspaces` `name` if needed.
-2. Edit `terraform/terraform.tfvars` (tracked in git with defaults) for shared settings such as `github_org`, `github_repo`, `environment`, or region. Terraform loads it automatically in the `terraform/` directory, including in GitHub Actions. For sensitive or personal overrides, keep a separate file (e.g. `terraform/secrets.tfvars`, gitignored) and run with `-var-file=secrets.tfvars`. If apply fails with **EntityAlreadyExists** for the GitHub OIDC provider (`token.actions.githubusercontent.com` already registered in the account), set **`github_oidc_provider_use_existing = true`** in `terraform.tfvars` so Terraform looks up the existing provider instead of creating it.
+2. Edit `terraform/terraform.tfvars` (tracked in git with defaults) for shared settings such as `github_org`, `github_repo`, `environment`, or region. Terraform loads it automatically in the `terraform/` directory, including in GitHub Actions. For sensitive or personal overrides, keep a separate file (e.g. `terraform/secrets.tfvars`, gitignored) and run with `-var-file=secrets.tfvars`. **`github_oidc_provider_use_existing`** defaults to **`true`** (reuse the account’s existing GitHub OIDC provider). Set **`false`** only in a brand-new account that has not yet registered **`token.actions.githubusercontent.com`**.
 3. Set `TF_TOKEN_app_terraform_io` (or `TF_TOKEN`) locally when running Terraform against the remote backend.
+
+## Static analysis (SAST)
+
+- **CodeQL** — Workflow **`.github/workflows/codeql.yml`** runs on pushes and pull requests to `main` / `develop`, plus a weekly schedule. Results appear under **Security → Code scanning alerts** once [code scanning is enabled](https://docs.github.com/en/code-security/code-scanning/enabling-code-scanning) for the repository. Private repos may require **GitHub Advanced Security**.
+- **Bandit (Python)** — The **ML pipeline** workflow runs **Bandit** on `training/`, `pipeline/`, and `inference/` *before* any AWS / SageMaker steps. The job fails on **medium-and-higher** severity issues (`-ll`). To include low severity, edit the `bandit` step in **`.github/workflows/ml-pipeline.yml`**.
 
 ## GitHub Actions secrets (documented)
 
@@ -46,6 +51,11 @@ Configure a **GitHub Environment** named `production` with required reviewers if
 You can also run **Actions → Terraform (AWS OIDC + HCP Terraform) → Run workflow** and choose **plan**, **apply**, or **destroy**. Apply and destroy use the `production` environment. **Destroy** with an empty **destroy targets** field removes everything in the current Terraform state (full teardown of what this config manages). Optionally set **destroy targets** (one resource address per line) for a partial destroy only.
 
 If you name roles differently, update the workflows to match.
+
+### Terraform apply issues
+
+- **GitHub OIDC `EntityAlreadyExists`** — The provider URL `https://token.actions.githubusercontent.com` can only exist once per account. **`github_oidc_provider_use_existing`** defaults to **`true`** in `variables.tf` so Terraform **looks up** the existing provider. Set it to **`false`** only when the account has **no** GitHub OIDC provider yet. If your state is out of sync, run **`terraform import`** for the provider or remove the resource from state after aligning with AWS.
+- **SageMaker endpoint `Failed` / ping health check** — Check **CloudWatch Logs** for **`/aws/sagemaker/Endpoints/log-anomaly-detector-endpoint`**. Common causes: the bootstrap **`model.tar.gz`** is missing, corrupt, or built with a **scikit-learn version** incompatible with the inference image. Regenerate **`terraform/files/bootstrap_model.tar.gz`** with **`bash scripts/build-bootstrap-model-artifact.sh`** (uses sklearn 1.2.x to match the default **`1.2-1-cpu-py3`** image tag), commit if needed, then **`terraform apply`** again. If an endpoint is stuck in **Failed**, remove it first (console or **`terraform destroy -target=aws_sagemaker_endpoint.log_anomaly_detector`**) so Terraform can recreate it. Endpoint config now allows **900s** for model download and container health checks.
 
 ### Repository variables (GitHub **Settings → Secrets and variables → Actions → Variables**)
 

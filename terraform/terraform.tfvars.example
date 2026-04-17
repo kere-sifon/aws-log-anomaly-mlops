@@ -8,8 +8,8 @@ environment                      = "dev"
 github_org                       = "YOUR_GITHUB_ORG"
 github_repo                      = "aws-log-anomaly-mlops"
 github_actions_ref_filter        = "*"
-# Set true if the GitHub OIDC provider already exists in the account (avoids EntityAlreadyExists on apply).
-# github_oidc_provider_use_existing = true
+# Default is true (reuse existing GitHub OIDC at token.actions.githubusercontent.com). Use false only in a new account with no GitHub OIDC provider yet.
+# github_oidc_provider_use_existing = false
 sagemaker_endpoint_instance_type = "ml.t2.medium"
 sklearn_inference_image_tag      = "1.2-1-cpu-py3"
 model_data_s3_object_key         = "models/placeholder/model.tar.gz"
