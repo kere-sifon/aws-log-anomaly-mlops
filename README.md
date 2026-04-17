@@ -34,6 +34,8 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 
 Configure a **GitHub Environment** named `production` with required reviewers if you use the gated `terraform-apply` job in `infra.yml`.
 
+You can also run **Actions → Terraform (AWS OIDC + HCP Terraform) → Run workflow** and choose **plan**, **apply**, or **destroy**. Apply and destroy use the `production` environment. For **destroy**, enter one Terraform resource address per line in **destroy targets** (CI runs `terraform destroy` only with `-target` per line).
+
 If you name roles differently, update the workflows to match. For a first bootstrap where the role only exists after Terraform creates it, apply once from a workstation, then store your Terraform OIDC role ARN as `AWS_TF_ROLE_ARN` (or keep a dedicated bootstrap role for cold start).
 
 ### Repository variables (GitHub **Settings → Secrets and variables → Actions → Variables**)

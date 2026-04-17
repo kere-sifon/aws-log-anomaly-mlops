@@ -14,6 +14,19 @@ on:
     paths:
       - "terraform/**"
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Manual Terraform action
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      destroy_targets:
+        description: Destroy only — one Terraform resource address per line (required for destroy; each line becomes -target)
+        required: false
+        type: string
 
 concurrency:
   group: terraform-${{ github.repository }}-${{ github.ref }}
@@ -28,6 +41,10 @@ jobs:
   terraform-plan:
     name: terraform-plan
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.operation == 'plan' || github.event.inputs.operation == 'apply'))
     permissions:
       id-token: write
       contents: read
@@ -67,7 +84,11 @@ jobs:
           terraform plan -input=false -no-color -out=plan.tfplan 2>&1 | tee plan_output.txt
 
       - name: Upload saved plan
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: |
+          success() && (
+            (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'apply')
+          )
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
@@ -102,7 +123,12 @@ jobs:
     name: terraform-apply
     runs-on: ubuntu-latest
     needs: terraform-plan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      needs.terraform-plan.result == 'success' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'apply')
+      )
     environment: production
     permissions:
       id-token: write
@@ -146,6 +172,77 @@ jobs:
             echo "## Terraform apply job failed"
             echo ""
             echo "Check the step logs above. Common causes: provider/auth errors, state lock contention, or rejected **production** environment deployment."
+            echo ""
+            echo "- Ref: \`${{ github.ref }}\`"
+            echo "- Run ID: ${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  terraform-destroy:
+    name: terraform-destroy
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'destroy'
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TF_ROLE_ARN }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform fmt (check)
+        run: terraform fmt -check -recursive
+
+      - name: Terraform validate
+        run: terraform validate -no-color
+
+      - name: Terraform destroy (scoped -target only)
+        env:
+          DESTROY_TARGETS: ${{ github.event.inputs.destroy_targets }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DESTROY_TARGETS// }" ]; then
+            echo "::error::destroy_targets is required for destroy. Enter one Terraform resource address per line (e.g. aws_s3_bucket.raw_logs)."
+            exit 1
+          fi
+          mapfile -t lines < <(printf '%s\n' "$DESTROY_TARGETS" | grep -v '^[[:space:]]*$' || true)
+          if [ "${#lines[@]}" -eq 0 ]; then
+            echo "::error::destroy_targets contained no non-empty lines."
+            exit 1
+          fi
+          args=()
+          for addr in "${lines[@]}"; do
+            addr="${addr//$'\r'/}"
+            args+=("-target=${addr}")
+          done
+          echo "Running: terraform destroy -input=false -auto-approve ${args[*]}"
+          terraform destroy -input=false -auto-approve "${args[@]}"
+
+      - name: Summarize failure
+        if: failure()
+        run: |
+          {
+            echo "## Terraform destroy job failed"
+            echo ""
+            echo "Check the step logs above. Verify **destroy_targets** addresses exist in state and the **production** environment approved the run."
             echo ""
             echo "- Ref: \`${{ github.ref }}\`"
             echo "- Run ID: ${{ github.run_id }}"
