@@ -49,6 +49,7 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
+      actions: write
     defaults:
       run:
         working-directory: terraform
@@ -133,6 +134,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read
     defaults:
       run:
         working-directory: terraform
@@ -145,6 +147,37 @@ jobs:
         with:
           name: terraform-plan
           path: ${{ github.workspace }}
+          merge-multiple: true
+
+      - name: Restore plan file path for apply
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          if [ -f terraform/plan.tfplan ]; then
+            echo "Plan already at terraform/plan.tfplan"
+            exit 0
+          fi
+          for candidate in \
+            "${GITHUB_WORKSPACE}/terraform-plan/terraform/plan.tfplan" \
+            "${GITHUB_WORKSPACE}/terraform-plan/plan.tfplan" \
+            "${GITHUB_WORKSPACE}/plan.tfplan"; do
+            if [ -f "$candidate" ]; then
+              mkdir -p terraform
+              cp "$candidate" terraform/plan.tfplan
+              echo "Restored plan from $candidate"
+              exit 0
+            fi
+          done
+          found="$(find "${GITHUB_WORKSPACE}" -name plan.tfplan 2>/dev/null | head -1 || true)"
+          if [ -n "$found" ] && [ -f "$found" ]; then
+            mkdir -p terraform
+            cp "$found" terraform/plan.tfplan
+            echo "Restored plan from $found"
+            exit 0
+          fi
+          echo "::error::plan.tfplan not found after artifact download"
+          find "${GITHUB_WORKSPACE}" -maxdepth 5 -name '*.tfplan' 2>/dev/null || true
+          exit 1
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
