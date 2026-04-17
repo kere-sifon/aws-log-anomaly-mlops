@@ -24,7 +24,7 @@ on:
           - apply
           - destroy
       destroy_targets:
-        description: Destroy only — one Terraform resource address per line (required for destroy; each line becomes -target)
+        description: Optional. Leave empty to destroy the full stack in state. Otherwise one Terraform resource address per line for a partial destroy (-target per line).
         required: false
         type: string
 
@@ -214,18 +214,19 @@ jobs:
       - name: Terraform validate
         run: terraform validate -no-color
 
-      - name: Terraform destroy (scoped -target only)
+      - name: Terraform destroy
         env:
           DESTROY_TARGETS: ${{ github.event.inputs.destroy_targets }}
         run: |
           set -euo pipefail
           if [ -z "${DESTROY_TARGETS// }" ]; then
-            echo "::error::destroy_targets is required for destroy. Enter one Terraform resource address per line (e.g. aws_s3_bucket.raw_logs)."
-            exit 1
+            echo "No destroy_targets: destroying full stack tracked in this workspace (same resources as a full apply would manage)."
+            terraform destroy -input=false -auto-approve
+            exit 0
           fi
           mapfile -t lines < <(printf '%s\n' "$DESTROY_TARGETS" | grep -v '^[[:space:]]*$' || true)
           if [ "${#lines[@]}" -eq 0 ]; then
-            echo "::error::destroy_targets contained no non-empty lines."
+            echo "::error::destroy_targets was set but contained no non-empty lines."
             exit 1
           fi
           args=()
@@ -233,7 +234,7 @@ jobs:
             addr="${addr//$'\r'/}"
             args+=("-target=${addr}")
           done
-          echo "Running: terraform destroy -input=false -auto-approve ${args[*]}"
+          echo "Partial destroy with -target: ${args[*]}"
           terraform destroy -input=false -auto-approve "${args[@]}"
 
       - name: Summarize failure
@@ -242,7 +243,7 @@ jobs:
           {
             echo "## Terraform destroy job failed"
             echo ""
-            echo "Check the step logs above. Verify **destroy_targets** addresses exist in state and the **production** environment approved the run."
+            echo "Check the step logs above. For partial destroys, verify **destroy_targets** addresses exist in state. Confirm the **production** environment approved the run."
             echo ""
             echo "- Ref: \`${{ github.ref }}\`"
             echo "- Run ID: ${{ github.run_id }}"

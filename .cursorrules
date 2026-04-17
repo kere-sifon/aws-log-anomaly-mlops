@@ -29,7 +29,7 @@
 ## Terraform
 - Always use HCP Terraform (app.terraform.io) as the remote state backend
 - Always run in this order: fmt → validate → plan → apply
-- Never use `terraform destroy` without a `-target` flag in CI
+- Never run an unrestricted `terraform destroy` in automated CI (e.g. on push). Full destroy of the stack is allowed only through the manual **Actions → workflow_dispatch** destroy job in `infra.yml`, gated by the `production` environment. For optional **partial** teardown in that same job, use `-target` via the `destroy_targets` input (one address per line).
 
 ## AWS Region
 - Default region is ca-central-1 unless explicitly told otherwise
