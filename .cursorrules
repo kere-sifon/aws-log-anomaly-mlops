@@ -1,0 +1,39 @@
+# Cursor Rules — aws-log-anomaly-mlops
+
+## Task Tracking
+- ALWAYS read TASKS.md before starting any task
+- ALWAYS update TASKS.md by marking completed items [x] after finishing them
+- NEVER mark an item [x] unless the file was actually created and is non-empty
+- After every response, show the current state of the relevant TASKS.md section
+- If a task is partially done, leave it [ ] and add a comment next to it: <!-- in progress -->
+
+## Code Standards
+- All Terraform resources must have a `description` in every variable block
+- All Terraform resources must have a `tags` block with: Project, Environment, ManagedBy
+- All Python scripts must include logging using the `logging` module, not print statements
+- All IAM policies must follow least-privilege — no wildcard `*` on actions unless unavoidable
+- No hardcoded AWS account IDs, ARNs, or credentials anywhere — use variables or secrets
+
+## File Structure
+- Terraform files live in `terraform/` only
+- SageMaker Pipeline definition lives in `pipeline/` only
+- Training scripts live in `training/` only
+- Inference scripts live in `inference/` only
+- GitHub Actions workflows live in `.github/workflows/` only
+
+## GitHub Actions
+- Always use OIDC for AWS authentication — never use static AWS_ACCESS_KEY_ID/SECRET
+- Always pin action versions (e.g. actions/checkout@v4, not actions/checkout@latest)
+- Always set `permissions` block explicitly on every job
+
+## Terraform
+- Always use HCP Terraform (app.terraform.io) as the remote state backend
+- Always run in this order: fmt → validate → plan → apply
+- Never use `terraform destroy` without a `-target` flag in CI
+
+## AWS Region
+- Default region is ca-central-1 unless explicitly told otherwise
+
+## When Unsure
+- Ask before creating a file that is not in TASKS.md
+- Ask before modifying a file that was already marked [x] in TASKS.md

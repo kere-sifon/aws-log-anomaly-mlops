@@ -1,0 +1,17 @@
+﻿python : Traceback (most recent call last):
+At C:\Users\0B9947649\AppData\Local\Temp\ps-script-b40852d7-a6c2-4017-ac6b-77d6b8fc7c25.ps1:86 char:1
++ python "len_keys.py" 2>&1 | Out-File -FilePath "keylens.txt" -Encodin ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "\\wsl.localhost\Ubuntu\home\kere\repos\aws-log-anomaly-mlops\len_keys.py", line 16, in <module>
+    Path(__file__).with_name("keylens.txt").write_text("\n".join(out), encoding="utf-8")
+  File "C:\Users\0B9947649\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1047, in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\0B9947649\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 13] Permission denied: 
+'\\\\wsl.localhost\\Ubuntu\\home\\kere\\repos\\aws-log-anomaly-mlops\\keylens.txt'
