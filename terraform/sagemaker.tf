@@ -28,6 +28,8 @@ resource "aws_sagemaker_model" "log_anomaly_model" {
 resource "aws_sagemaker_endpoint_configuration" "log_anomaly_endpoint_config" {
   name = "log-anomaly-endpoint-config"
 
+  depends_on = [aws_sagemaker_model.log_anomaly_model]
+
   production_variants {
     variant_name           = "primary"
     model_name             = aws_sagemaker_model.log_anomaly_model.name
@@ -46,6 +48,11 @@ resource "aws_sagemaker_endpoint" "log_anomaly_detector" {
   name                 = "log-anomaly-detector-endpoint"
   endpoint_config_name = aws_sagemaker_endpoint_configuration.log_anomaly_endpoint_config.name
   tags                 = local.default_tags
+
+  depends_on = [
+    aws_sagemaker_model.log_anomaly_model,
+    aws_sagemaker_endpoint_configuration.log_anomaly_endpoint_config,
+  ]
 
   lifecycle {
     ignore_changes = [
