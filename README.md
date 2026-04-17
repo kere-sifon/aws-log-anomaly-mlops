@@ -29,8 +29,9 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 | Secret | Used by | Purpose |
 | --- | --- | --- |
 | `TF_API_TOKEN` | `infra.yml` | Terraform Cloud (HCP Terraform) API token for the `cloud` backend |
-| `AWS_TF_ROLE_ARN` | `infra.yml` | IAM role ARN for Terraform AWS operations via GitHub OIDC (`configure-aws-credentials`) |
-| `AWS_SAGEMAKER_ROLE_ARN` | `ml-pipeline.yml` | IAM role ARN for SageMaker pipeline CLI / boto3 (OIDC) |
+| `AWS_TF_ROLE_ARN` | `infra.yml`, `ml-pipeline.yml` | IAM role **ARN** GitHub Actions assumes via OIDC (`configure-aws-credentials`). Same role Terraform defines as `github_actions` — use `terraform output -raw github_actions_role_arn` after apply. |
+
+The ML workflow needs two different ARNs: secret **`AWS_TF_ROLE_ARN`** (GitHub → AWS via OIDC) and repository variable **`SAGEMAKER_EXECUTION_ROLE_ARN`** (the role **SageMaker** assumes for pipelines and jobs). 
 
 Configure a **GitHub Environment** named `production` with required reviewers if you use the gated `terraform-apply` job in `infra.yml`.
 
@@ -47,7 +48,7 @@ If you name roles differently, update the workflows to match. For a first bootst
 | `MODEL_PACKAGE_GROUP_NAME` | `ml-pipeline.yml` | Model package group (e.g. `LogAnomalyDetectors`); must match `pipeline/definition.py` |
 | `SAGEMAKER_PIPELINE_NAME` | `ml-pipeline.yml` | SageMaker Pipeline name (defaults to `log-anomaly-detection-pipeline` if unset) |
 | `SAGEMAKER_ENDPOINT_NAME` | `ml-pipeline.yml` | Live endpoint to update after approval (e.g. Terraform output) |
-| `SAGEMAKER_EXECUTION_ROLE_ARN` | `ml-pipeline.yml` | SageMaker execution role passed to `CreateModel` (not the OIDC role) |
+| `SAGEMAKER_EXECUTION_ROLE_ARN` | `ml-pipeline.yml` | SageMaker execution role ARN (`sagemaker_execution` in Terraform): pipeline `upsert`, training, and `CreateModel` |
 | `SAGEMAKER_INFERENCE_INSTANCE_TYPE` | `ml-pipeline.yml` | Optional; defaults to `ml.t2.medium` |
 
 ## Local quick checks

@@ -38,6 +38,10 @@ terraform.rc
 # Allow committed root defaults; use e.g. secrets.tfvars (gitignored) for local overrides.
 !terraform/terraform.tfvars
 
+# Project-local
+PROMPTS.md
+keylens.txt
+
 # OS / editor
 .DS_Store
 Thumbs.db

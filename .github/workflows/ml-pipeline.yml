@@ -101,7 +101,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_SAGEMAKER_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_TF_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
 
       - name: Install boto3 and sagemaker
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upsert pipeline definition
         env:
-          SAGEMAKER_ROLE_ARN: ${{ secrets.AWS_SAGEMAKER_ROLE_ARN }}
+          SAGEMAKER_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN }}
         run: |
           python3 - <<'PY'
           import os
@@ -174,7 +174,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_SAGEMAKER_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_TF_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
 
       - name: Poll pipeline status (60s interval, max 30 min)
@@ -241,7 +241,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_SAGEMAKER_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_TF_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
 
       - name: Approve latest model package and deploy to endpoint
