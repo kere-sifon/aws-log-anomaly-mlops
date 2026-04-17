@@ -35,7 +35,7 @@ jobs:
       pipeline_execution_arn: ${{ steps.start.outputs.pipeline_execution_arn }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
 
@@ -99,7 +99,7 @@ jobs:
           exit 1
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_TF_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
@@ -172,7 +172,7 @@ jobs:
       contents: read
     steps:
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_TF_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
@@ -239,7 +239,7 @@ jobs:
       contents: read
     steps:
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_TF_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}

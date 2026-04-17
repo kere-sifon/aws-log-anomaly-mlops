@@ -23,7 +23,7 @@
 
 ## GitHub Actions
 - Always use OIDC for AWS authentication — never use static AWS_ACCESS_KEY_ID/SECRET
-- Always pin action versions (e.g. actions/checkout@v4, not actions/checkout@latest)
+- Always pin action versions (e.g. actions/checkout@v6, not actions/checkout@latest)
 - Always set `permissions` block explicitly on every job
 
 ## Terraform
