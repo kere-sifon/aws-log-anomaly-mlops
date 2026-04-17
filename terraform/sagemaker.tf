@@ -14,6 +14,10 @@ resource "aws_sagemaker_model" "log_anomaly_model" {
     image          = data.aws_sagemaker_prebuilt_ecr_image.sklearn_inference.registry_path
     model_data_url = "s3://${aws_s3_bucket.model_artifacts.bucket}/${aws_s3_object.bootstrap_model_artifact.key}"
     mode           = "SingleModel"
+    environment = {
+      # Required when model.tar.gz includes code/inference.py (see scripts/build-bootstrap-model-artifact.sh).
+      SAGEMAKER_PROGRAM = "inference.py"
+    }
   }
 
   depends_on = [aws_s3_object.bootstrap_model_artifact]
@@ -25,13 +29,13 @@ resource "aws_sagemaker_endpoint_configuration" "log_anomaly_endpoint_config" {
   name = "log-anomaly-endpoint-config"
 
   production_variants {
-    variant_name           = "primary"
-    model_name             = aws_sagemaker_model.log_anomaly_model.name
-    initial_instance_count = 1
-    instance_type          = "ml.t2.medium"
-    initial_variant_weight = 1
+    variant_name                                      = "primary"
+    model_name                                        = aws_sagemaker_model.log_anomaly_model.name
+    initial_instance_count                            = 1
+    instance_type                                     = "ml.t2.medium"
+    initial_variant_weight                            = 1
     # Defaults are short; first-time image pull + model load can exceed them and surface as ping failures.
-    model_data_download_timeout_in_seconds            = 900
+    model_data_download_timeout_in_seconds       = 900
     container_startup_health_check_timeout_in_seconds = 900
   }
 
