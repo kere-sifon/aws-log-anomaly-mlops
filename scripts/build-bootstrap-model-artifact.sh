@@ -4,7 +4,9 @@
 # Layout (SageMaker Scikit-learn container):
 #   model.tar.gz
 #   ├── model.joblib          # same bundle shape as training/train.py (dict with model + feature_columns)
-#   └── code/inference.py     # repo inference handlers (must match SAGEMAKER_PROGRAM in sagemaker.tf)
+#   └── code/
+#         inference.py        # handlers (import name must match SAGEMAKER_PROGRAM in sagemaker.tf)
+#         setup.py            # py_modules so "pip install ." exposes import inference
 #
 # Pin scikit-learn to a 1.2.x line compatible with the default inference image tag (e.g. 1.2-1-cpu-py3).
 set -euo pipefail
@@ -17,6 +19,7 @@ trap 'rm -rf "${WORKDIR}"' EXIT
 
 mkdir -p "${WORKDIR}/code"
 cp "${ROOT}/inference/inference.py" "${WORKDIR}/code/inference.py"
+cp "${ROOT}/inference/setup.py" "${WORKDIR}/code/setup.py"
 
 VENV="${WORKDIR}/venv"
 python3 -m venv "${VENV}"
