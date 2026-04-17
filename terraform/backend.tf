@@ -11,7 +11,7 @@ terraform {
   }
 
   cloud {
-    organization = "YOUR_TERRAFORM_CLOUD_ORG"
+    organization = "kere-terra"
 
     workspaces {
       name = "aws-log-anomaly-mlops"
