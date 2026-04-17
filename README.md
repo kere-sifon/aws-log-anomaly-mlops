@@ -21,7 +21,7 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 ## Configure Terraform
 
 1. In `terraform/backend.tf`, replace `YOUR_TERRAFORM_CLOUD_ORG` with your Terraform Cloud organization and adjust the `workspaces` `name` if needed.
-2. Edit `terraform/terraform.tfvars` (tracked in git with defaults) for shared settings such as `github_org`, `github_repo`, `environment`, or region. Terraform loads it automatically in the `terraform/` directory, including in GitHub Actions. For sensitive or personal overrides, keep a separate file (e.g. `terraform/secrets.tfvars`, gitignored) and run with `-var-file=secrets.tfvars`.
+2. Edit `terraform/terraform.tfvars` (tracked in git with defaults) for shared settings such as `github_org`, `github_repo`, `environment`, or region. Terraform loads it automatically in the `terraform/` directory, including in GitHub Actions. For sensitive or personal overrides, keep a separate file (e.g. `terraform/secrets.tfvars`, gitignored) and run with `-var-file=secrets.tfvars`. If apply fails with **EntityAlreadyExists** for the GitHub OIDC provider (`token.actions.githubusercontent.com` already registered in the account), set **`github_oidc_provider_use_existing = true`** in `terraform.tfvars` so Terraform looks up the existing provider instead of creating it.
 3. Set `TF_TOKEN_app_terraform_io` (or `TF_TOKEN`) locally when running Terraform against the remote backend.
 
 ## GitHub Actions secrets (documented)

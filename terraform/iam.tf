@@ -15,11 +15,19 @@ locals {
   iam_sagemaker_ep_log_group_arn   = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/Endpoints/log-anomaly-detector-endpoint:*"
   iam_sagemaker_training_log_arn   = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/TrainingJobs:*"
   iam_sagemaker_processing_log_arn = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/ProcessingJobs:*"
+  # One account-wide GitHub OIDC provider; Terraform may create it or adopt an existing one (see var.github_oidc_provider_use_existing).
+  github_oidc_provider_arn = var.github_oidc_provider_use_existing ? data.aws_iam_openid_connect_provider.github_actions[0].arn : aws_iam_openid_connect_provider.github_actions[0].arn
 }
 
 # GitHub-provided OIDC issuer used by `aws-actions/configure-aws-credentials` and the `sub` claim.
+data "aws_iam_openid_connect_provider" "github_actions" {
+  count = var.github_oidc_provider_use_existing ? 1 : 0
+  url   = "https://token.actions.githubusercontent.com"
+}
+
 resource "aws_iam_openid_connect_provider" "github_actions" {
-  url = "https://token.actions.githubusercontent.com"
+  count = var.github_oidc_provider_use_existing ? 0 : 1
+  url   = "https://token.actions.githubusercontent.com"
 
   client_id_list = [
     "sts.amazonaws.com",
@@ -45,7 +53,7 @@ data "aws_iam_policy_document" "github_actions_assume" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+      identifiers = [local.github_oidc_provider_arn]
     }
 
     condition {

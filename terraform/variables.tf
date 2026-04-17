@@ -34,6 +34,12 @@ variable "github_actions_ref_filter" {
   default     = "*"
 }
 
+variable "github_oidc_provider_use_existing" {
+  type        = bool
+  description = "If true, use the account's existing GitHub Actions OIDC provider (https://token.actions.githubusercontent.com) instead of creating it. Set true when CreateOpenIDConnectProvider fails with EntityAlreadyExists (provider was created earlier or outside this state)."
+  default     = false
+}
+
 variable "sagemaker_endpoint_instance_type" {
   type        = string
   description = "Instance type for real-time inference (informational; `terraform/sagemaker.tf` fixes the endpoint config to ml.t2.medium per project defaults)."

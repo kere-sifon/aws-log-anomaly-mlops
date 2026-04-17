@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (gitignored) and edit values you need:
+#   cp terraform.tfvars.example terraform.tfvars
+# Descriptions are in variables.tf. Terraform auto-loads terraform.tfvars when present.
+
+aws_region                       = "ca-central-1"
+project_name                     = "aws-log-anomaly-mlops"
+environment                      = "dev"
+github_org                       = "YOUR_GITHUB_ORG"
+github_repo                      = "aws-log-anomaly-mlops"
+github_actions_ref_filter        = "*"
+# Set true if the GitHub OIDC provider already exists in the account (avoids EntityAlreadyExists on apply).
+# github_oidc_provider_use_existing = true
+sagemaker_endpoint_instance_type = "ml.t2.medium"
+sklearn_inference_image_tag      = "1.2-1-cpu-py3"
+model_data_s3_object_key         = "models/placeholder/model.tar.gz"
