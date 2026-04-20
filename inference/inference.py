@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Default schema for JSON ``instances`` (adjust when training features change).
 expected_features = [
+    "timestamp",
     "cpu_usage",
     "memory_usage",
     "error_rate",
