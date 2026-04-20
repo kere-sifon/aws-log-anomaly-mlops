@@ -16,7 +16,7 @@ resource "aws_sagemaker_model" "log_anomaly_model" {
     model_data_url = "s3://${aws_s3_bucket.model_artifacts.bucket}/${aws_s3_object.bootstrap_model_artifact.key}"
     environment = {
       # Module name for code/inference.py (no .py suffix; importlib.import_module).
-      SAGEMAKER_PROGRAM = "inference"
+      SAGEMAKER_PROGRAM          = "inference"
       SAGEMAKER_SUBMIT_DIRECTORY = "/opt/ml/model/code"
     }
   }
