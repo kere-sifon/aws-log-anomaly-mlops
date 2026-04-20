@@ -17,6 +17,7 @@ resource "aws_sagemaker_model" "log_anomaly_model" {
     environment = {
       # Module name for code/inference.py (no .py suffix; importlib.import_module).
       SAGEMAKER_PROGRAM = "inference"
+      SAGEMAKER_SUBMIT_DIRECTORY = "/opt/ml/model/code"
     }
   }
 
