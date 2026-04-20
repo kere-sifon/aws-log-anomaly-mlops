@@ -27,7 +27,7 @@ python3 -m venv "${VENV}"
 source "${VENV}/bin/activate"
 python3 -m pip install -q -U pip setuptools wheel
 # NumPy 2.x is ABI-incompatible with many sklearn 1.2 wheels → "numpy.dtype size changed".
-python3 -m pip install -q "numpy>=1.24,<2" "scikit-learn>=1.2,<1.3" "joblib>=1.3"
+python3 -m pip install -q "numpy>=1.24,<2" "scikit-learn==1.2.1,<1.3" "joblib>=1.3"
 
 python3 <<'PY'
 import joblib
