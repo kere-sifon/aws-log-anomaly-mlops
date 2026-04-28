@@ -26,7 +26,7 @@ def _load_model(model_dir: Path):
         extract_root = model_dir / "extracted"
         extract_root.mkdir(exist_ok=True)
         with tarfile.open(tarballs[0], "r:gz") as tar:
-            tar.extractall(path=extract_root)
+            tar.extractall(path=extract_root, filter="data")
         candidates = list(extract_root.rglob("model.joblib"))
         if not candidates:
             raise FileNotFoundError("model.joblib not found in model artifact archive.")
