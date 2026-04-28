@@ -166,7 +166,7 @@ jobs:
         env:
           SAGEMAKER_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN || secrets.SAGEMAKER_EXECUTION_ROLE_ARN }}
           PIPELINE_NAME: ${{ vars.SAGEMAKER_PIPELINE_NAME || 'log-anomaly-detection-pipeline' }}
-          MODEL_PACKAGE_GROUP_NAME: ${{ vars.MODEL_PACKAGE_GROUP_NAME }}
+          MODEL_PACKAGE_GROUP_NAME: ${{ vars.MODEL_PACKAGE_GROUP_NAME || secrets.MODEL_PACKAGE_GROUP_NAME }}
           FORCE_RETRAIN: ${{ github.event.inputs.force_retrain || 'false' }}
         run: |
           python3 - <<'PY'
@@ -376,9 +376,10 @@ jobs:
       - name: Approve latest model package and deploy to endpoint
         id: deploy
         env:
-          MODEL_PACKAGE_GROUP_NAME: ${{ vars.MODEL_PACKAGE_GROUP_NAME }}
-          SAGEMAKER_ENDPOINT_NAME: ${{ vars.SAGEMAKER_ENDPOINT_NAME }}
-          SAGEMAKER_EXECUTION_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN }}
+          # Match trigger-pipeline: allow Secrets for ARNs/names users prefer not to expose in Variables lists.
+          MODEL_PACKAGE_GROUP_NAME: ${{ vars.MODEL_PACKAGE_GROUP_NAME || secrets.MODEL_PACKAGE_GROUP_NAME }}
+          SAGEMAKER_ENDPOINT_NAME: ${{ vars.SAGEMAKER_ENDPOINT_NAME || secrets.SAGEMAKER_ENDPOINT_NAME }}
+          SAGEMAKER_EXECUTION_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN || secrets.SAGEMAKER_EXECUTION_ROLE_ARN }}
           SAGEMAKER_INFERENCE_INSTANCE_TYPE: ${{ vars.SAGEMAKER_INFERENCE_INSTANCE_TYPE || 'ml.t2.medium' }}
           PIPELINE_EXECUTION_ARN: ${{ needs.trigger-pipeline.outputs.pipeline_execution_arn }}
         run: |
@@ -396,10 +397,26 @@ jobs:
           instance_type = os.environ["SAGEMAKER_INFERENCE_INSTANCE_TYPE"]
           pe_arn = os.environ.get("PIPELINE_EXECUTION_ARN", "")
 
-          if not group or not endpoint_name or not exec_role:
+          missing = [
+              n
+              for n, v in (
+                  ("MODEL_PACKAGE_GROUP_NAME", group),
+                  ("SAGEMAKER_ENDPOINT_NAME", endpoint_name),
+                  ("SAGEMAKER_EXECUTION_ROLE_ARN", exec_role),
+              )
+              if not v
+          ]
+          if missing:
               print(
-                  "Set GitHub repository variables: MODEL_PACKAGE_GROUP_NAME, "
-                  "SAGEMAKER_ENDPOINT_NAME, SAGEMAKER_EXECUTION_ROLE_ARN"
+                  "Configure GitHub → Settings → Secrets and variables → Actions → Variables (or Secrets). Missing: "
+                  + ", ".join(missing),
+                  flush=True,
+              )
+              print(
+                  "Values: MODEL_PACKAGE_GROUP_NAME (e.g. LogAnomalyDetectors), "
+                  "SAGEMAKER_ENDPOINT_NAME (Terraform sagemaker_endpoint name / console), "
+                  "SAGEMAKER_EXECUTION_ROLE_ARN (terraform output -raw sagemaker_execution_role_arn).",
+                  flush=True,
               )
               sys.exit(1)
 
