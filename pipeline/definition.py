@@ -26,12 +26,13 @@ from sagemaker.workflow.steps import ProcessingStep, TrainingStep
 logger = logging.getLogger(__name__)
 
 
-def build_pipeline() -> Pipeline:
+def build_pipeline(execution_role_arn: str) -> Pipeline:
     """Construct the log-anomaly SageMaker Pipeline (SDK 2.x)."""
-    sess = Session()
-    role = os.environ.get("SAGEMAKER_ROLE_ARN")
+    role = execution_role_arn.strip()
     if not role:
-        raise RuntimeError("Set SAGEMAKER_ROLE_ARN to the SageMaker execution role ARN before upserting.")
+        raise ValueError("execution_role_arn must be a non-empty SageMaker execution role ARN.")
+
+    sess = Session()
 
     default_bucket = sess.default_bucket()
     if not default_bucket:
@@ -203,7 +204,7 @@ def build_pipeline() -> Pipeline:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     role_arn = os.environ["SAGEMAKER_ROLE_ARN"]
-    pipeline = build_pipeline()
+    pipeline = build_pipeline(role_arn)
     logger.info("Upserting pipeline with execution role from SAGEMAKER_ROLE_ARN")
     pipeline.upsert(role_arn=role_arn)
     execution = pipeline.start()

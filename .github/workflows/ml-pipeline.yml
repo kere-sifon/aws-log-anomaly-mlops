@@ -54,7 +54,7 @@ jobs:
       contents: read
       actions: read
     outputs:
-      pipeline_execution_arn: ${{ steps.start.outputs.pipeline_execution_arn }}
+      pipeline_execution_arn: ${{ steps.start.outputs.pipeline_execution_arn || '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -132,19 +132,26 @@ jobs:
           python3 -m pip install "boto3>=1.34.0,<2" "sagemaker>=2.220.0,<3"
 
       - name: Upsert pipeline definition
+        if: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN != '' || secrets.SAGEMAKER_EXECUTION_ROLE_ARN != '' }}
         env:
-          SAGEMAKER_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN }}
+          SAGEMAKER_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN || secrets.SAGEMAKER_EXECUTION_ROLE_ARN }}
         run: |
           python3 - <<'PY'
           import os
           from pipeline.definition import build_pipeline
-          role = os.environ["SAGEMAKER_ROLE_ARN"]
-          pipe = build_pipeline()
+          role = os.environ["SAGEMAKER_ROLE_ARN"].strip()
+          pipe = build_pipeline(role)
           pipe.upsert(role_arn=role)
           PY
 
+      - name: Notice when SageMaker execution role is unset
+        if: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN == '' && secrets.SAGEMAKER_EXECUTION_ROLE_ARN == '' }}
+        run: |
+          echo "::notice title=Skipping SageMaker upsert and run::Configure repository variable or secret SAGEMAKER_EXECUTION_ROLE_ARN (SageMaker execution role ARN from Terraform) to enable pipeline upsert and execution in this workflow."
+
       - name: Start pipeline execution
         id: start
+        if: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN != '' || secrets.SAGEMAKER_EXECUTION_ROLE_ARN != '' }}
         env:
           PIPELINE_NAME: ${{ vars.SAGEMAKER_PIPELINE_NAME || 'log-anomaly-detection-pipeline' }}
           MODEL_PACKAGE_GROUP_NAME: ${{ vars.MODEL_PACKAGE_GROUP_NAME }}
@@ -187,6 +194,7 @@ jobs:
 
   wait-for-pipeline:
     name: Wait for pipeline execution
+    if: ${{ needs.trigger-pipeline.outputs.pipeline_execution_arn != '' }}
     runs-on: ubuntu-latest
     needs: trigger-pipeline
     permissions:

@@ -7,7 +7,7 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 | Path | Purpose |
 | --- | --- |
 | `terraform/` | AWS resources: S3 buckets, OIDC IAM for GitHub Actions, SageMaker roles/model/endpoint (ml.t2.medium), CloudWatch alarms |
-| `pipeline/` | SageMaker Pipeline definition (`build_pipeline()` runs `training/train.py` on **ml.m5.xlarge** with **managed spot**) |
+| `pipeline/` | SageMaker Pipeline definition (`build_pipeline(role_arn)` runs `training/train.py` on **ml.m5.xlarge** with **managed spot**) |
 | `training/` | SageMaker training entrypoint (`IsolationForest`) |
 | `inference/` | Realtime inference handlers compatible with the SageMaker scikit-learn image |
 | `.github/workflows/` | CI for Terraform (HCP Terraform backend) and the ML pipeline |
@@ -75,7 +75,8 @@ If you name roles differently, update the workflows to match.
 cd terraform && terraform fmt -recursive && terraform validate
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -c "from pipeline.definition import build_pipeline; build_pipeline()"
+SAGEMAKER_ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/YOUR_SAGEMAKER_EXECUTION_ROLE \
+  python -c "import os; from pipeline.definition import build_pipeline; build_pipeline(os.environ['SAGEMAKER_ROLE_ARN'])"
 python training/train.py  # writes to SM paths if unset; uses synthetic data
 ```
 
