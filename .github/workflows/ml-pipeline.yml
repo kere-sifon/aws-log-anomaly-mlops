@@ -479,8 +479,14 @@ jobs:
           pkg = sm.describe_model_package(ModelPackageName=mp_arn)
           inf = pkg["InferenceSpecification"]["Containers"][0]
           container = {"Image": inf["Image"], "ModelDataUrl": inf["ModelDataUrl"]}
-          if inf.get("Environment"):
-              container["Environment"] = inf["Environment"]
+          # Align with terraform/sagemaker.tf; sklearn realtime needs SAGEMAKER_PROGRAM for /ping to succeed.
+          env = dict(inf.get("Environment") or {})
+          for env_key, env_val in (
+              ("SAGEMAKER_PROGRAM", "inference"),
+              ("SAGEMAKER_SUBMIT_DIRECTORY", "/opt/ml/model/code"),
+          ):
+              env.setdefault(env_key, env_val)
+          container["Environment"] = env
 
           model_name = f"log-anomaly-gh-{gh_run}"
           sm.create_model(
