@@ -81,6 +81,9 @@ resource "aws_iam_role" "github_actions" {
 }
 
 # Pipeline / model / endpoint ARNs for CI (deploy, retrain, teardown). Pipeline name matches pipeline/definition.py default.
+#
+# CreatePipeline targets resource "*" until the pipeline exists; IAM denies CreatePipeline when the only
+# allow is sagemaker:* on arn:...:pipeline/<name> — add a regional wildcard for pipeline lifecycle + runs.
 data "aws_iam_policy_document" "github_actions_sagemaker" {
   statement {
     sid    = "SageMakerProjectResources"
@@ -94,6 +97,33 @@ data "aws_iam_policy_document" "github_actions_sagemaker" {
       aws_sagemaker_endpoint_configuration.log_anomaly_endpoint_config.arn,
       aws_sagemaker_endpoint.log_anomaly_detector.arn,
     ]
+  }
+}
+
+data "aws_iam_policy_document" "github_actions_sagemaker_pipelines_regional" {
+  statement {
+    sid    = "SageMakerPipelinesRegionalWildcard"
+    effect = "Allow"
+    actions = [
+      "sagemaker:CreatePipeline",
+      "sagemaker:UpdatePipeline",
+      "sagemaker:DeletePipeline",
+      "sagemaker:DescribePipeline",
+      "sagemaker:ListPipelines",
+      "sagemaker:StartPipelineExecution",
+      "sagemaker:StopPipelineExecution",
+      "sagemaker:DescribePipelineExecution",
+      "sagemaker:ListPipelineExecutions",
+      "sagemaker:ListPipelineExecutionSteps",
+      "sagemaker:DescribePipelineDefinitionForExecution",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [data.aws_region.current.name]
+    }
   }
 }
 
@@ -170,6 +200,7 @@ data "aws_iam_policy_document" "github_actions_ecr" {
 data "aws_iam_policy_document" "github_actions_combined" {
   source_policy_documents = [
     data.aws_iam_policy_document.github_actions_sagemaker.json,
+    data.aws_iam_policy_document.github_actions_sagemaker_pipelines_regional.json,
     data.aws_iam_policy_document.github_actions_s3.json,
     data.aws_iam_policy_document.github_actions_passrole.json,
     data.aws_iam_policy_document.github_actions_ecr.json,
