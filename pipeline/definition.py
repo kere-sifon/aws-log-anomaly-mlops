@@ -95,7 +95,8 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
                 destination=output_uri,
             ),
         ],
-        arguments=[],
+        # Non-empty list required by CreatePipeline validation (min length 1); scripts ignore argv.
+        arguments=["noop"],
         wait=False,
     )
     preprocess_step = ProcessingStep(
@@ -171,7 +172,7 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
                 destination=Join(on="/", values=[output_uri, "evaluation"]),
             ),
         ],
-        arguments=[],
+        arguments=["noop"],
         wait=False,
     )
     evaluate_step = ProcessingStep(
