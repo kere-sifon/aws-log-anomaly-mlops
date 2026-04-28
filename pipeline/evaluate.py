@@ -42,7 +42,7 @@ def _load_model(model_dir: Path):
 
 def main() -> None:
     model_dir = Path("/opt/ml/processing/model")
-    holdout_path = Path("/opt/ml/processing/holdout/eval.csv")
+    holdout_path = Path("/opt/ml/processing/preprocess_out/holdout/eval.csv")
     eval_out_dir = Path("/opt/ml/processing/evaluation")
     eval_out_dir.mkdir(parents=True, exist_ok=True)
 

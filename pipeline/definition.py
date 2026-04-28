@@ -62,9 +62,10 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
         name="InputDataURI",
         default_value=f"s3://{default_bucket}/raw/",
     )
+    # No trailing slash — Join() for subpaths (e.g. .../evaluation) would otherwise produce .../processed//evaluation.
     output_uri = ParameterString(
         name="OutputURI",
-        default_value=f"s3://{default_bucket}/processed/",
+        default_value=f"s3://{default_bucket}/processed",
     )
     model_package_group_name = ParameterString(
         name="ModelPackageGroupName",
@@ -156,16 +157,11 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
                 source=train_step.properties.ModelArtifacts.S3ModelArtifacts,
                 destination="/opt/ml/processing/model",
             ),
+            # Whole preprocess output prefix (features.csv + holdout/eval.csv). Do not Join() a file onto
+            # S3Uri — the URI often ends with "/" and produces ".../processed//holdout/eval.csv" (wrong key).
             ProcessingInput(
-                source=Join(
-                    on="/",
-                    values=[
-                        preprocess_step.properties.ProcessingOutputConfig.Outputs["processed"].S3Output.S3Uri,
-                        "holdout",
-                        "eval.csv",
-                    ],
-                ),
-                destination="/opt/ml/processing/holdout",
+                source=preprocess_step.properties.ProcessingOutputConfig.Outputs["processed"].S3Output.S3Uri,
+                destination="/opt/ml/processing/preprocess_out",
             ),
         ],
         outputs=[
