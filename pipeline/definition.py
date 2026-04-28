@@ -11,7 +11,7 @@ import os
 
 from sagemaker.inputs import TrainingInput
 from sagemaker.processing import ProcessingInput, ProcessingOutput
-from sagemaker.session import Session
+from sagemaker.workflow.pipeline_context import PipelineSession
 from sagemaker.sklearn.estimator import SKLearn
 from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.workflow.condition_step import ConditionStep
@@ -26,10 +26,10 @@ from sagemaker.workflow.steps import ProcessingStep, TrainingStep
 logger = logging.getLogger(__name__)
 
 
-def _sagemaker_session() -> Session:
-    """Build a SageMaker SDK session without forcing creation of the default ``sagemaker-{region}-{account}`` bucket.
+def _pipeline_session() -> PipelineSession:
+    """Build a ``PipelineSession`` (required for ``processor.run()`` → ``ProcessingStep(step_args=...)``).
 
-    Set ``SAGEMAKER_DEFAULT_BUCKET`` to an existing bucket the caller can use (typically Terraform
+    Set ``SAGEMAKER_DEFAULT_BUCKET`` to an existing bucket (typically Terraform
     ``aws_s3_bucket.processed_features`` name). Narrow CI/GitHub IAM roles rarely have ``s3:CreateBucket``
     on the auto-generated SageMaker bucket, so upserts may fail unless this is set.
     """
@@ -42,8 +42,8 @@ def _sagemaker_session() -> Session:
             "bucket, which OIDC deploy roles are usually not allowed to create."
         )
     if explicit:
-        return Session(default_bucket=explicit)
-    return Session()
+        return PipelineSession(default_bucket=explicit)
+    return PipelineSession()
 
 
 def build_pipeline(execution_role_arn: str) -> Pipeline:
@@ -52,7 +52,7 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
     if not role:
         raise ValueError("execution_role_arn must be a non-empty SageMaker execution role ARN.")
 
-    sess = _sagemaker_session()
+    sess = _pipeline_session()
 
     default_bucket = sess.default_bucket()
     if not default_bucket:
@@ -80,9 +80,9 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
         sagemaker_session=sess,
     )
 
-    preprocess_step = ProcessingStep(
-        name="EngineerLogFeatures",
-        processor=sklearn_processor,
+    preprocess_step_args = sklearn_processor.run(
+        code="preprocess.py",
+        source_dir="pipeline",
         inputs=[
             ProcessingInput(
                 source=input_data_uri,
@@ -96,9 +96,12 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
                 destination=output_uri,
             ),
         ],
-        job_arguments=[],
-        code="preprocess.py",
-        source_dir="pipeline",
+        arguments=[],
+        wait=False,
+    )
+    preprocess_step = ProcessingStep(
+        name="EngineerLogFeatures",
+        step_args=preprocess_step_args,
     )
 
     estimator = SKLearn(
@@ -143,9 +146,9 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
         sagemaker_session=sess,
     )
 
-    evaluate_step = ProcessingStep(
-        name="EvaluateAnomalyF1",
-        processor=evaluate_processor,
+    evaluate_step_args = evaluate_processor.run(
+        code="evaluate.py",
+        source_dir="pipeline",
         inputs=[
             ProcessingInput(
                 source=train_step.properties.ModelArtifacts.S3ModelArtifacts,
@@ -170,9 +173,12 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
                 destination=Join(on="/", values=[output_uri, "evaluation"]),
             ),
         ],
-        job_arguments=[],
-        code="evaluate.py",
-        source_dir="pipeline",
+        arguments=[],
+        wait=False,
+    )
+    evaluate_step = ProcessingStep(
+        name="EvaluateAnomalyF1",
+        step_args=evaluate_step_args,
         property_files=[evaluation_report],
     )
 
