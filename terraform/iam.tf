@@ -333,6 +333,8 @@ data "aws_iam_policy_document" "sagemaker_execution_passrole_self" {
 }
 
 # SageMaker control plane operations for jobs and hosted resources scoped to this project’s naming prefix and ARNs.
+# Pipeline steps name jobs with a "pipelines-{id}-{StepName}-{suffix}" pattern, not ${name_prefix}-*;
+# include those ARNs so CreateProcessingJob / AddTags / training jobs resolve (sagemaker:AddTags on job ARNs).
 data "aws_iam_policy_document" "sagemaker_execution_service" {
   statement {
     sid    = "SageMakerOperationsOnProjectResources"
@@ -348,6 +350,9 @@ data "aws_iam_policy_document" "sagemaker_execution_service" {
       "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:training-job/${local.name_prefix}-*",
       "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:processing-job/${local.name_prefix}-*",
       "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:transform-job/${local.name_prefix}-*",
+      "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:training-job/pipelines-*",
+      "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:processing-job/pipelines-*",
+      "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:transform-job/pipelines-*",
     ]
   }
 }
