@@ -72,16 +72,22 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _coerce_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Return numeric feature matrix with expected columns; logs and drops bad rows."""
-    n_in = len(df)
-    work = df.copy()
+def _legacy_schema_ready(work: pd.DataFrame) -> bool:
+    """True when CSV looks like the canonical log-monitoring feature table."""
+    needed = sum(1 for c in FEATURE_COLUMNS if c in work.columns)
+    # Require every named column — older synthetic / integration tests use exactly this schema.
+    return needed == len(FEATURE_COLUMNS)
 
+
+def _coerce_features_legacy(work: pd.DataFrame) -> pd.DataFrame:
+    """Fixed six-column schema (timestamp + metrics)."""
+    n_in = len(work)
     if "timestamp" in work.columns:
         ts = pd.to_datetime(work["timestamp"], errors="coerce", utc=True)
         bad_ts = ts.isna() & work["timestamp"].notna()
         if bad_ts.any():
             logger.warning("Dropped %s rows with unparseable timestamp.", int(bad_ts.sum()))
+        work = work.copy()
         work["timestamp"] = ts.apply(lambda t: t.timestamp() if pd.notna(t) else np.nan)
 
     for col in FEATURE_COLUMNS:
@@ -98,11 +104,64 @@ def _coerce_features(df: pd.DataFrame) -> pd.DataFrame:
     dropped = before - len(feats)
     if dropped:
         logger.warning("Dropped %s rows with missing or non-finite feature values (of %s).", dropped, n_in)
-
-    if len(feats) < 10:
-        raise ValueError(f"Too few valid rows after cleaning: {len(feats)} (need at least 10).")
-
     return feats
+
+
+def _coerce_features_dynamic(work: pd.DataFrame) -> pd.DataFrame:
+    """Use all preprocess/engineered numeric columns (Pipeline + arbitrary log CSV/JONL-derived names)."""
+    n_in = len(work)
+    frame = pd.DataFrame(index=work.index)
+    for col in work.columns:
+        if col == "timestamp":
+            ts = pd.to_datetime(work[col], errors="coerce", utc=True)
+            bad_ts = ts.isna() & work[col].notna()
+            if bad_ts.any():
+                logger.warning("Dropped %s rows with unparseable timestamp.", int(bad_ts.sum()))
+            frame[col] = ts.map(lambda t: t.timestamp() if pd.notna(t) else np.nan)
+        else:
+            frame[col] = pd.to_numeric(work[col], errors="coerce")
+    before = len(frame)
+    frame = frame.replace([np.inf, -np.inf], np.nan).dropna()
+    dropped = before - len(frame)
+    if dropped:
+        logger.warning(
+            "Dropped %s rows with missing or non-finite feature values (of %s).",
+            dropped,
+            n_in,
+        )
+    return frame
+
+
+def _coerce_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Return numeric feature matrix and column order for serialization / inference."""
+    work = df.copy()
+    if "label" in work.columns:
+        work = work.drop(columns=["label"])
+
+    if _legacy_schema_ready(work):
+        logger.info("Using legacy FEATURE_COLUMNS schema (%s).", FEATURE_COLUMNS)
+        feats = _coerce_features_legacy(work)
+        cols = list(FEATURE_COLUMNS)
+    else:
+        logger.info(
+            "Using dynamic feature columns from CSV (%s); pipeline preprocess output aligns with this path.",
+            list(work.columns),
+        )
+        feats = _coerce_features_dynamic(work)
+        cols = list(feats.columns)
+
+    min_rows = 2
+    if len(feats) < min_rows:
+        raise ValueError(
+            f"Too few valid rows after cleaning: {len(feats)} (need at least {min_rows})."
+        )
+    if len(feats) < 10:
+        logger.warning(
+            "Only %s training rows — metrics are unreliable; add more data for production quality.",
+            len(feats),
+        )
+
+    return feats, cols
 
 
 def main() -> None:
@@ -128,14 +187,16 @@ def main() -> None:
                 "log_level_encoded": rng.integers(0, 4, n),
             }
         )
-        x_all = _coerce_features(syn).to_numpy(dtype=np.float64, copy=False)
+        x_all, feature_columns = _coerce_features(syn)
+        x_all = x_all.to_numpy(dtype=np.float64, copy=False)
     else:
         try:
             df = pd.read_csv(features_path)
         except Exception as e:
             logger.exception("Failed reading CSV %s", features_path)
             raise RuntimeError(f"Could not read training CSV: {e}") from e
-        x_all = _coerce_features(df).to_numpy(dtype=np.float64, copy=False)
+        feats_df, feature_columns = _coerce_features(df)
+        x_all = feats_df.to_numpy(dtype=np.float64, copy=False)
 
     rng_split = np.random.RandomState(args.random_state)
     x_train, x_val = train_test_split(
@@ -189,7 +250,7 @@ def main() -> None:
     model_path = model_dir / "model.joblib"
     payload = {
         "model": model,
-        "feature_columns": FEATURE_COLUMNS,
+        "feature_columns": feature_columns,
         "threshold": threshold,
     }
     joblib.dump(payload, model_path)
