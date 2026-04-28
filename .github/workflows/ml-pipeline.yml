@@ -257,11 +257,68 @@ jobs:
           fail_states = {"Failed", "Stopped"}
           final = None
 
+
+          def emit_failure_help():
+              """Emit failure reasons so logs show why SageMaker marked the run failed."""
+              print("--- Pipeline execution diagnostics ---", flush=True)
+              try:
+                  d = sm.describe_pipeline_execution(PipelineExecutionArn=arn)
+                  for key in ("PipelineExecutionStatus", "PipelineExecutionFailureReason", "PipelineExecutionDisplayName"):
+                      if key in d and d[key]:
+                          print(f"{key}: {d[key]}", flush=True)
+                  if summary_path:
+                      with open(summary_path, "a", encoding="utf-8") as fh:
+                          fh.write("### Diagnostics\n\n")
+                          r = d.get("PipelineExecutionFailureReason")
+                          if r:
+                              fh.write(f"**PipelineExecutionFailureReason:** {r}\n\n")
+              except Exception as exc:
+                  print("describe_pipeline_execution:", exc, flush=True)
+
+              try:
+                  steps = []
+                  tok = None
+                  while True:
+                      kw = {"PipelineExecutionArn": arn, "MaxResults": 50}
+                      if tok:
+                          kw["NextToken"] = tok
+                      pg = sm.list_pipeline_execution_steps(**kw)
+                      steps.extend(pg.get("PipelineExecutionSteps") or [])
+                      tok = pg.get("NextToken")
+                      if not tok:
+                          break
+                  for s in steps:
+                      name = s.get("StepName", "?")
+                      st = s.get("StepStatus", "?")
+                      if st not in ("Failed", "Stopping"):
+                          continue
+                      fr = (s.get("FailureReason") or "").strip()
+                      meta = (s.get("Metadata") or {})
+                      od = ""
+                      try:
+                          if isinstance(meta.get("AdditionalMetadata"), dict):
+                              od = meta["AdditionalMetadata"].get("DetailedMetadata", "") or ""
+                      except Exception:
+                          pass
+                      print(f"[FAILED STEP] {name} status={st}", flush=True)
+                      if fr:
+                          print(f"  FailureReason: {fr}", flush=True)
+                      if od:
+                          print(f"  AdditionalMetadata.detail: …{od[:2000]}…" if len(od) > 2000 else f"  AdditionalMetadata.detail: {od}", flush=True)
+                      if summary_path:
+                          line = f"- **{name}** ({st}): {fr or 'see CloudWatch'}\n"
+                          with open(summary_path, "a", encoding="utf-8") as fh:
+                              fh.write(line)
+                      print("", flush=True)
+              except Exception as exc:
+                  print("list_pipeline_execution_steps:", exc, flush=True)
+
+
           for i in range(30):
               d = sm.describe_pipeline_execution(PipelineExecutionArn=arn)
               status = d["PipelineExecutionStatus"]
               line = f"Poll {i + 1}/30: {status}\n"
-              print(line, end="")
+              print(line, end="", flush=True)
               if summary_path:
                   with open(summary_path, "a", encoding="utf-8") as fh:
                       fh.write(line)
@@ -275,10 +332,11 @@ jobs:
 
           if final is None:
               msg = "Timed out after 30 minutes waiting for pipeline execution."
-              print(msg)
+              print(msg, flush=True)
               if summary_path:
                   with open(summary_path, "a", encoding="utf-8") as fh:
                       fh.write(f"### Final status\n\n{msg}\n")
+              emit_failure_help()
               sys.exit(1)
 
           if summary_path:
@@ -286,6 +344,8 @@ jobs:
                   fh.write(f"### Final pipeline status\n\n**{final}**\n")
 
           if final in fail_states:
+              print(f"Pipeline finished with terminal status={final}; see SageMaker Console → Pipelines.", flush=True)
+              emit_failure_help()
               sys.exit(1)
           PY
 
