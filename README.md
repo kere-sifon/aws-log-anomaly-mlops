@@ -6,6 +6,7 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 
 | Path | Purpose |
 | --- | --- |
+| `docs/` | Supplementary documentation (e.g. [`roles.md`](docs/roles.md): IAM trust + permission JSON placeholders for `terraform/iam.tf`) |
 | `terraform/` | AWS resources: S3 buckets, OIDC IAM for GitHub Actions, SageMaker roles/model/endpoint (ml.t2.medium), CloudWatch alarms |
 | `pipeline/` | SageMaker Pipeline definition (`build_pipeline(role_arn)` runs `training/train.py` on **ml.m5.xlarge** with **managed spot**) |
 | `training/` | SageMaker training entrypoint (`IsolationForest`) |
@@ -43,6 +44,8 @@ The ML SageMaker workflow assumes a **different** role (Terraform-managed, least
 | `AWS_ML_PIPELINE_ROLE_ARN` | `ml-pipeline.yml` | **Required.** Same value as **`terraform output -raw github_actions_role_arn`** (role `aws_iam_role.github_actions` in `iam.tf`). This role has **`sagemaker:CreatePipeline`** and project S3 access. Do **not** reuse **`AWS_TF_ROLE_ARN`** here — that bootstrap role (`GithubActions`/admin) does **not** receive those policies unless you attach them manually. |
 
 The ML workflow still needs **`SAGEMAKER_EXECUTION_ROLE_ARN`** (**Variable** or **Secret**) — the IAM role **SageMaker jobs** assume — from **`terraform output -raw sagemaker_execution_role_arn`**.
+
+**IAM:** Trust policies, permission JSON (placeholders), Terraform resources, and outputs for **`github_actions`** and **`sagemaker_execution`** are in **[`docs/roles.md`](docs/roles.md)**. Code source of truth is **`terraform/iam.tf`**. The Terraform bootstrap role **`AWS_TF_ROLE_ARN`** is separate (see end of **`docs/roles.md`** and **IAM for Terraform CI** below).
 
 ### IAM for Terraform CI (`AWS_TF_ROLE_ARN`)
 
