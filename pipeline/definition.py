@@ -36,10 +36,10 @@ def _sagemaker_session() -> Session:
     explicit = (os.environ.get("SAGEMAKER_DEFAULT_BUCKET") or "").strip()
     if os.environ.get("GITHUB_ACTIONS") == "true" and not explicit:
         raise RuntimeError(
-            "Set repository variable SAGEMAKER_DEFAULT_BUCKET to your pipeline root S3 bucket name "
-            "(e.g. Terraform output s3_processed_features_bucket_name). "
-            "That prevents the SageMaker SDK from trying to provision the account-wide SageMaker "
-            "default bucket, which Actions OIDC roles are not usually allowed to create."
+            "Set Actions variable or secret SAGEMAKER_DEFAULT_BUCKET to your pipeline root S3 bucket name "
+            "(Terraform output s3_processed_features_bucket_name, e.g. <project>-processed-features). "
+            "That prevents the SageMaker SDK from provisioning the account-wide sagemaker-{region}-{account} "
+            "bucket, which OIDC deploy roles are usually not allowed to create."
         )
     if explicit:
         return Session(default_bucket=explicit)

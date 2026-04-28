@@ -134,7 +134,7 @@ jobs:
       - name: Upsert pipeline definition
         env:
           SAGEMAKER_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN || secrets.SAGEMAKER_EXECUTION_ROLE_ARN }}
-          SAGEMAKER_DEFAULT_BUCKET: ${{ vars.SAGEMAKER_DEFAULT_BUCKET }}
+          SAGEMAKER_DEFAULT_BUCKET: ${{ vars.SAGEMAKER_DEFAULT_BUCKET || secrets.SAGEMAKER_DEFAULT_BUCKET }}
         run: |
           python3 - <<'PY'
           import os
