@@ -172,6 +172,40 @@ data "aws_iam_policy_document" "github_actions_passrole" {
 }
 
 # ECR registry for Regional SageMaker image pulls (matches data.aws_sagemaker_prebuilt_ecr_image in sagemaker.tf).
+# Approve/deploy job (ml-pipeline.yml): list/describe/approve packages; create ephemeral Model + EndpointConfig; update Endpoint.
+data "aws_iam_policy_document" "github_actions_sagemaker_ml_deploy" {
+  statement {
+    sid    = "SageMakerModelPackagesRegistryRegional"
+    effect = "Allow"
+    actions = [
+      "sagemaker:ListModelPackages",
+      "sagemaker:DescribeModelPackage",
+      "sagemaker:UpdateModelPackage",
+    ]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [data.aws_region.current.name]
+    }
+  }
+
+  statement {
+    sid    = "SageMakerGithubDeployModelsConfigs"
+    effect = "Allow"
+    actions = [
+      "sagemaker:CreateModel",
+      "sagemaker:DescribeModel",
+      "sagemaker:CreateEndpointConfig",
+      "sagemaker:DescribeEndpointConfig",
+    ]
+    resources = [
+      "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:model/log-anomaly-*",
+      "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:endpoint-config/log-anomaly-*",
+    ]
+  }
+}
+
 data "aws_iam_policy_document" "github_actions_ecr" {
   statement {
     sid    = "EcrAuthToken"
@@ -201,6 +235,7 @@ data "aws_iam_policy_document" "github_actions_combined" {
   source_policy_documents = [
     data.aws_iam_policy_document.github_actions_sagemaker.json,
     data.aws_iam_policy_document.github_actions_sagemaker_pipelines_regional.json,
+    data.aws_iam_policy_document.github_actions_sagemaker_ml_deploy.json,
     data.aws_iam_policy_document.github_actions_s3.json,
     data.aws_iam_policy_document.github_actions_passrole.json,
     data.aws_iam_policy_document.github_actions_ecr.json,
