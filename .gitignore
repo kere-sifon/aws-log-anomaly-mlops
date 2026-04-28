@@ -43,6 +43,7 @@ terraform/policies/
 # Project-local
 PROMPTS.md
 keylens.txt
+docs/how-it-works.md
 
 # OS / editor
 .DS_Store
