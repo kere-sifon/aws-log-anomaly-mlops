@@ -16,6 +16,43 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logger = logging.getLogger(__name__)
 
 
+def _dataframe_to_numeric_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Produce a numeric-only feature matrix from mixed log tables.
+
+    Logs often arrive as strings. We first keep native numeric dtypes, then coerce
+    digits to numbers, then factorize remaining text columns into ordinal codes
+    so Isolation Forest always sees numeric inputs.
+    """
+    numeric = df.select_dtypes(include=["number"]).copy()
+    if numeric.shape[1] > 0:
+        return numeric
+
+    built: dict[str, pd.Series] = {}
+    for c in df.columns:
+        col = df[c]
+        parsed = pd.to_numeric(col, errors="coerce")
+        if parsed.notna().sum() > 0:
+            name = str(c).replace("/", "_")[:96] if str(c) else "col"
+            while name in built:
+                name = f"{name}_dup"
+            built[name] = parsed
+            continue
+
+        codes = pd.factorize(col.astype(str), sort=False)[0].astype(np.float64)
+        name = str(c).replace("/", "_")[:96] if str(c) else "col"
+        while name in built:
+            name = f"{name}_freq"
+        built[f"{name}_freq"] = pd.Series(codes, index=df.index)
+
+    if not built:
+        raise ValueError("No usable columns after loading raw inputs.")
+    logger.info(
+        "No native numeric columns; built %s numeric columns via coercion/factorization",
+        len(built),
+    )
+    return pd.DataFrame(built)
+
+
 def _feature_frame_from_raw(raw_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build training features and a holdout set with a binary ``label`` column (1 = anomaly)."""
     paths = sorted(raw_dir.glob("**/*.csv")) + sorted(raw_dir.glob("**/*.jsonl"))
@@ -37,9 +74,7 @@ def _feature_frame_from_raw(raw_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         df = pd.DataFrame(rng.standard_normal(size=(n, d)), columns=[f"f{i}" for i in range(d)])
         df["trace"] = rng.integers(0, 2, size=n).astype(int)
 
-    numeric = df.select_dtypes(include=["number"]).copy()
-    if numeric.shape[1] == 0:
-        raise ValueError("No numeric columns after loading raw inputs.")
+    numeric = _dataframe_to_numeric_features(df)
 
     n_hold = min(80, max(10, numeric.shape[0] // 5))
     rng = np.random.default_rng(7)
