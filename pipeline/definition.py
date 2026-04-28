@@ -104,6 +104,8 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
         step_args=preprocess_step_args,
     )
 
+    # Spot training requires MaxWaitTimeInSeconds >= MaxRuntimeInSeconds (see CreateTrainingJob).
+    train_max_runtime_sec = 60 * 120  # 2 hours wall-clock for training
     estimator = SKLearn(
         entry_point="train.py",
         source_dir="training",
@@ -113,9 +115,10 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
         instance_count=1,
         instance_type="ml.m5.xlarge",
         volume_size=30,
-        max_run=60 * 120,
+        max_run=train_max_runtime_sec,
         use_spot_instances=True,
-        max_wait=3600,
+        # Total budget including waiting for Spot capacity — must not be smaller than max_run.
+        max_wait=train_max_runtime_sec + 3600,
         sagemaker_session=sess,
         base_job_name="log-anomaly-train-iforest",
     )
