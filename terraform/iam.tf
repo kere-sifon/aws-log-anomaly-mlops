@@ -316,6 +316,22 @@ data "aws_iam_policy_document" "sagemaker_execution_ecr" {
   }
 }
 
+# SageMaker Pipelines runs steps under credentials derived from PipelineRoleArn / execution identity;
+# launching ProcessingJob / TrainingJob requires iam:PassRole on the RoleArn passed into those APIs
+# (here: the same execution role). Without this, CreateProcessingJob fails with PassRole denied.
+data "aws_iam_policy_document" "sagemaker_execution_passrole_self" {
+  statement {
+    sid    = "PassExecutionRoleToSageMakerJobs"
+    effect = "Allow"
+    actions = [
+      "iam:PassRole",
+    ]
+    resources = [
+      aws_iam_role.sagemaker_execution.arn,
+    ]
+  }
+}
+
 # SageMaker control plane operations for jobs and hosted resources scoped to this project’s naming prefix and ARNs.
 data "aws_iam_policy_document" "sagemaker_execution_service" {
   statement {
@@ -341,6 +357,7 @@ data "aws_iam_policy_document" "sagemaker_execution_combined" {
     data.aws_iam_policy_document.sagemaker_execution_s3.json,
     data.aws_iam_policy_document.sagemaker_execution_logs.json,
     data.aws_iam_policy_document.sagemaker_execution_ecr.json,
+    data.aws_iam_policy_document.sagemaker_execution_passrole_self.json,
     data.aws_iam_policy_document.sagemaker_execution_service.json,
   ]
 }
