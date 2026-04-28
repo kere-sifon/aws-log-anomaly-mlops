@@ -77,10 +77,15 @@ def _feature_frame_from_raw(raw_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     numeric = _dataframe_to_numeric_features(df)
 
     n = numeric.shape[0]
-    if n < 2:
-        raise ValueError(
-            f"Need at least 2 rows for train/holdout split after feature extraction; got {n}."
+    if n == 0:
+        raise ValueError("No rows after feature extraction.")
+    if n == 1:
+        logger.warning(
+            "Only 1 row after feature extraction; duplicating so train/holdout split succeeds "
+            "(evaluation metrics will be unreliable — add more log lines for realistic training)."
         )
+        numeric = pd.concat([numeric, numeric], ignore_index=True)
+        n = 2
     # Target ~20% holdout (min 10, max 80) but never exceed available rows minus one
     # for training, otherwise rng.choice raises when n_hold > len(population).
     n_hold = min(80, max(10, n // 5), n - 1)
