@@ -1,6 +1,17 @@
 # aws-log-anomaly-mlops
 
-Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and hosting an **Isolation Forest** model that flags anomalous engineered log-feature vectors.
+Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and hosting an **Isolation Forest** model that flags anomalous log entries.
+
+The model uses the same six log-content features as `ai-monitoring-ml-service`, making the SageMaker endpoint a drop-in replacement for that FastAPI service:
+
+| Feature | Source |
+| --- | --- |
+| `message_length` | Length of the log message string |
+| `has_exception` | 1 if message contains "exception" (or field is set) |
+| `has_timeout` | 1 if message contains "timeout" (or field is set) |
+| `has_connection_error` | 1 if message contains both "connection" and "error" |
+| `level` | Log level encoded: DEBUG=0, INFO=1, WARN=2, ERROR=3, FATAL=4 |
+| `service_hash` | `hash(service_name) % 1000` |
 
 ## Layout
 
@@ -64,7 +75,7 @@ If you name roles differently, update the workflows to match.
 ### Terraform apply issues
 
 - **GitHub OIDC `EntityAlreadyExists`** — The provider URL `https://token.actions.githubusercontent.com` can only exist once per account. **`github_oidc_provider_use_existing`** defaults to **`true`** in `variables.tf` so Terraform **looks up** the existing provider. Set it to **`false`** only when the account has **no** GitHub OIDC provider yet. If your state is out of sync, run **`terraform import`** for the provider or remove the resource from state after aligning with AWS.
-- **SageMaker endpoint `Failed` / ping health check** — Check **CloudWatch Logs** for **`/aws/sagemaker/Endpoints/log-anomaly-detector-endpoint`**. The bootstrap artifact must be a **`model.tar.gz`** that includes **`model.joblib`** (same **dict** shape as **`training/train.py`**: `model`, `feature_columns`, `threshold`) and **`code/inference.py`** plus **`code/setup.py`** (so the container’s **`pip install .`** registers the **`inference`** module); **`sagemaker.tf`** sets **`SAGEMAKER_PROGRAM = inference`** (module name, not `inference.py`). Regenerate **`terraform/files/bootstrap_model.tar.gz`** with **`bash scripts/build-bootstrap-model-artifact.sh`** (sklearn **1.2.x** to match **`1.2-1-cpu-py3`**), **commit** the tarball, then **`terraform apply`** again. If an endpoint is stuck in **Failed**, remove it first (console or **`terraform destroy -target=aws_sagemaker_endpoint.log_anomaly_detector`**) so Terraform can recreate it.
+- **SageMaker endpoint `Failed` / ping health check** — Check **CloudWatch Logs** for **`/aws/sagemaker/Endpoints/log-anomaly-detector-endpoint`**. The bootstrap artifact must be a **`model.tar.gz`** that includes **`model.joblib`** (same **dict** shape as **`training/train.py`**: `model`, `scaler`, `feature_columns`, `threshold`) and **`code/inference.py`** plus **`code/setup.py`** (so the container’s **`pip install .`** registers the **`inference`** module); **`sagemaker.tf`** sets **`SAGEMAKER_PROGRAM = inference`** (module name, not `inference.py`). Regenerate **`terraform/files/bootstrap_model.tar.gz`** with **`bash scripts/build-bootstrap-model-artifact.sh`** (sklearn **1.2.x** to match **`1.2-1-cpu-py3`**), **commit** the tarball, then **`terraform apply`** again. If an endpoint is stuck in **Failed**, remove it first (console or **`terraform destroy -target=aws_sagemaker_endpoint.log_anomaly_detector`**) so Terraform can recreate it.
 
 ### Repository variables (GitHub **Settings → Secrets and variables → Actions → Variables**)
 
@@ -90,6 +101,48 @@ SAGEMAKER_ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/YOUR_SAGEMAKER_EXECUTION_ROLE \
   python -c "import os; from pipeline.definition import build_pipeline; build_pipeline(os.environ['SAGEMAKER_ROLE_ARN'])"
 python training/train.py  # writes to SM paths if unset; uses synthetic data
 ```
+
+## Inference request / response format
+
+The endpoint accepts `application/json` with an `instances` array. Each instance mirrors the single-predict body sent by `ai-monitoring-log-processor` to `ai-monitoring-ml-service`:
+
+```json
+POST /invocations
+Content-Type: application/json
+
+{
+  "instances": [
+    {
+      "log_id": "abc-123",
+      "features": {
+        "message_length": 142,
+        "level": "ERROR",
+        "service": "payment-svc",
+        "has_exception": true,
+        "has_timeout": false,
+        "has_connection_error": false
+      }
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "predictions": [
+    {
+      "log_id": "abc-123",
+      "is_anomaly": true,
+      "anomaly_score": 0.83,
+      "confidence": 0.66
+    }
+  ]
+}
+```
+
+`anomaly_score` is a sigmoid-transformed Isolation Forest decision score (0–1, higher = more anomalous). `confidence` is `|anomaly_score − 0.5| × 2`, matching the scale used by `ai-monitoring-ml-service`.
 
 ## SageMaker training vs endpoint
 

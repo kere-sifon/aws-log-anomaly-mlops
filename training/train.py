@@ -21,17 +21,18 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 FEATURE_COLUMNS = [
-    "timestamp",
-    "cpu_usage",
-    "memory_usage",
-    "error_rate",
-    "request_latency_ms",
-    "log_level_encoded",
+    "message_length",
+    "has_exception",
+    "has_timeout",
+    "has_connection_error",
+    "level",
+    "service_hash",
 ]
 
 DEFAULT_TRAIN_CSV = Path("/opt/ml/input/data/train/features.csv")
@@ -80,21 +81,13 @@ def _legacy_schema_ready(work: pd.DataFrame) -> bool:
 
 
 def _coerce_features_legacy(work: pd.DataFrame) -> pd.DataFrame:
-    """Fixed six-column schema (timestamp + metrics)."""
+    """Coerce the canonical log-content feature columns to numeric."""
     n_in = len(work)
-    if "timestamp" in work.columns:
-        ts = pd.to_datetime(work["timestamp"], errors="coerce", utc=True)
-        bad_ts = ts.isna() & work["timestamp"].notna()
-        if bad_ts.any():
-            logger.warning("Dropped %s rows with unparseable timestamp.", int(bad_ts.sum()))
-        work = work.copy()
-        work["timestamp"] = ts.apply(lambda t: t.timestamp() if pd.notna(t) else np.nan)
-
     for col in FEATURE_COLUMNS:
         if col not in work.columns:
             logger.warning("Missing column %r; filling with NaN.", col)
             work[col] = np.nan
-        elif col != "timestamp":
+        else:
             work[col] = pd.to_numeric(work[col], errors="coerce")
 
     feats = work.reindex(columns=FEATURE_COLUMNS).copy()
@@ -181,12 +174,12 @@ def main() -> None:
         n = 500
         syn = pd.DataFrame(
             {
-                "timestamp": pd.date_range("2024-01-01", periods=n, freq="min"),
-                "cpu_usage": rng.uniform(0, 100, n),
-                "memory_usage": rng.uniform(0, 100, n),
-                "error_rate": rng.uniform(0, 0.2, n),
-                "request_latency_ms": rng.uniform(1, 500, n),
-                "log_level_encoded": rng.integers(0, 4, n),
+                "message_length": rng.integers(10, 500, n),
+                "has_exception": rng.integers(0, 2, n),
+                "has_timeout": rng.integers(0, 2, n),
+                "has_connection_error": rng.integers(0, 2, n),
+                "level": rng.integers(0, 5, n),
+                "service_hash": rng.integers(0, 1000, n),
             }
         )
         x_all, feature_columns = _coerce_features(syn)
@@ -219,6 +212,11 @@ def main() -> None:
     )
 
     n_train, n_val = x_train.shape[0], x_val.shape[0]
+
+    scaler = StandardScaler()
+    x_train = scaler.fit_transform(x_train)
+    x_val = scaler.transform(x_val)
+
     # IsolationForest max_samples cannot exceed n_train; avoid max(2, n_train) alone when n_train==1.
     max_samples = min(args.max_samples, max(2, n_train), n_train)
 
@@ -263,6 +261,7 @@ def main() -> None:
     model_path = model_dir / "model.joblib"
     payload = {
         "model": model,
+        "scaler": scaler,
         "feature_columns": feature_columns,
         "threshold": threshold,
     }

@@ -3,7 +3,7 @@
 #
 # Layout (SageMaker Scikit-learn container):
 #   model.tar.gz
-#   ├── model.joblib          # same bundle shape as training/train.py (dict with model + feature_columns)
+#   ├── model.joblib          # same bundle shape as training/train.py (dict: model, scaler, feature_columns, threshold)
 #   └── code/
 #         inference.py        # handlers (import name must match SAGEMAKER_PROGRAM in sagemaker.tf)
 #         setup.py            # py_modules so "pip install ." exposes import inference
@@ -33,28 +33,33 @@ python3 <<'PY'
 import joblib
 import numpy as np
 from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
 import os
 
 # Keep aligned with training/train.py FEATURE_COLUMNS so inference.py model_fn + predict dimensions match.
 FEATURE_COLUMNS = [
-    "timestamp",
-    "cpu_usage",
-    "memory_usage",
-    "error_rate",
-    "request_latency_ms",
-    "log_level_encoded",
+    "message_length",
+    "has_exception",
+    "has_timeout",
+    "has_connection_error",
+    "level",
+    "service_hash",
 ]
 
 out_dir = os.environ["WORKDIR"]
 path = os.path.join(out_dir, "model.joblib")
 rng = np.random.default_rng(0)
 X = rng.standard_normal((96, len(FEATURE_COLUMNS)))
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 clf = IsolationForest(n_estimators=32, random_state=0, max_samples=96, contamination=0.05)
-clf.fit(X)
+clf.fit(X_scaled)
+scores = clf.score_samples(X_scaled)
 payload = {
     "model": clf,
+    "scaler": scaler,
     "feature_columns": FEATURE_COLUMNS,
-    "threshold": 0.0,
+    "threshold": float(np.quantile(scores, 0.05)),
 }
 joblib.dump(payload, path)
 print("Wrote", path, flush=True)

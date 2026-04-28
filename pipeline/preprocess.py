@@ -15,42 +15,63 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+LEVEL_MAPPING = {"DEBUG": 0, "INFO": 1, "WARN": 2, "WARNING": 2, "ERROR": 3, "FATAL": 4, "CRITICAL": 4}
 
-def _dataframe_to_numeric_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Produce a numeric-only feature matrix from mixed log tables.
+# Canonical feature columns — must match training/train.py and inference/inference.py.
+FEATURE_COLUMNS = [
+    "message_length",
+    "has_exception",
+    "has_timeout",
+    "has_connection_error",
+    "level",
+    "service_hash",
+]
 
-    Logs often arrive as strings. We first keep native numeric dtypes, then coerce
-    digits to numbers, then factorize remaining text columns into ordinal codes
-    so Isolation Forest always sees numeric inputs.
+LOG_COLUMNS = {"message", "level", "service", "has_exception", "has_timeout", "has_connection_error"}
+
+
+def _is_log_dataframe(df: pd.DataFrame) -> bool:
+    """True when the DataFrame looks like raw log records (has message or level column)."""
+    return bool({"message", "level"} & set(df.columns))
+
+
+def _extract_log_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert raw log records to the canonical numeric feature matrix.
+
+    Mirrors the feature extraction in ai-monitoring-ml-service so both systems
+    train and score on identical signals.
     """
-    numeric = df.select_dtypes(include=["number"]).copy()
-    if numeric.shape[1] > 0:
-        return numeric
+    out = pd.DataFrame(index=df.index)
 
-    built: dict[str, pd.Series] = {}
-    for c in df.columns:
-        col = df[c]
-        parsed = pd.to_numeric(col, errors="coerce")
-        if parsed.notna().sum() > 0:
-            name = str(c).replace("/", "_")[:96] if str(c) else "col"
-            while name in built:
-                name = f"{name}_dup"
-            built[name] = parsed
-            continue
+    msg = df["message"].astype(str) if "message" in df.columns else pd.Series("", index=df.index)
+    msg_lower = msg.str.lower()
 
-        codes = pd.factorize(col.astype(str), sort=False)[0].astype(np.float64)
-        name = str(c).replace("/", "_")[:96] if str(c) else "col"
-        while name in built:
-            name = f"{name}_freq"
-        built[f"{name}_freq"] = pd.Series(codes, index=df.index)
+    out["message_length"] = msg.str.len().fillna(0).astype(int)
 
-    if not built:
-        raise ValueError("No usable columns after loading raw inputs.")
-    logger.info(
-        "No native numeric columns; built %s numeric columns via coercion/factorization",
-        len(built),
-    )
-    return pd.DataFrame(built)
+    if "has_exception" in df.columns:
+        out["has_exception"] = pd.to_numeric(df["has_exception"], errors="coerce").fillna(0).astype(int)
+    else:
+        out["has_exception"] = msg_lower.str.contains("exception", regex=False).astype(int)
+
+    if "has_timeout" in df.columns:
+        out["has_timeout"] = pd.to_numeric(df["has_timeout"], errors="coerce").fillna(0).astype(int)
+    else:
+        out["has_timeout"] = msg_lower.str.contains("timeout", regex=False).astype(int)
+
+    if "has_connection_error" in df.columns:
+        out["has_connection_error"] = pd.to_numeric(df["has_connection_error"], errors="coerce").fillna(0).astype(int)
+    else:
+        out["has_connection_error"] = (
+            msg_lower.str.contains("connection", regex=False) & msg_lower.str.contains("error", regex=False)
+        ).astype(int)
+
+    level_col = df["level"].astype(str).str.upper() if "level" in df.columns else pd.Series("INFO", index=df.index)
+    out["level"] = level_col.map(LEVEL_MAPPING).fillna(1).astype(int)
+
+    service_col = df["service"].astype(str) if "service" in df.columns else pd.Series("unknown", index=df.index)
+    out["service_hash"] = service_col.apply(lambda s: hash(s) % 1000).astype(int)
+
+    return out
 
 
 def _feature_frame_from_raw(raw_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -68,13 +89,19 @@ def _feature_frame_from_raw(raw_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
                         rows.append(json.loads(line))
                 frames.append(pd.DataFrame(rows))
         df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+        numeric = _extract_log_features(df) if _is_log_dataframe(df) else df[FEATURE_COLUMNS].copy()
     else:
         rng = np.random.default_rng(42)
-        n, d = 400, 8
-        df = pd.DataFrame(rng.standard_normal(size=(n, d)), columns=[f"f{i}" for i in range(d)])
-        df["trace"] = rng.integers(0, 2, size=n).astype(int)
-
-    numeric = _dataframe_to_numeric_features(df)
+        n = 400
+        numeric = pd.DataFrame({
+            "message_length": rng.integers(10, 500, n),
+            "has_exception": rng.integers(0, 2, n),
+            "has_timeout": rng.integers(0, 2, n),
+            "has_connection_error": rng.integers(0, 2, n),
+            "level": rng.integers(0, 5, n),
+            "service_hash": rng.integers(0, 1000, n),
+        })
+        logger.warning("No raw log files found in %s — using synthetic data for training.", raw_dir)
 
     n = numeric.shape[0]
     if n == 0:

@@ -1,143 +1,183 @@
 """
 SageMaker realtime inference handlers for the scikit-learn Isolation Forest model.
 
-Feature names are centralized in ``expected_features``; at load time order may follow
-``feature_columns`` inside ``model.joblib`` (see ``training/train.py``).
+Accepts the same log-content feature schema as ai-monitoring-ml-service so the
+SageMaker endpoint can serve as a drop-in replacement for the FastAPI ML service.
+
+Request format (application/json):
+    {
+        "instances": [
+            {
+                "log_id": "abc-123",          // optional, echoed in response
+                "features": {
+                    "message_length": 142,
+                    "level": "ERROR",          // string or int 0-4
+                    "service": "payment-svc",  // hashed to int internally
+                    "has_exception": true,
+                    "has_timeout": false,
+                    "has_connection_error": false
+                }
+            }
+        ]
+    }
+
+Response format (application/json):
+    {
+        "predictions": [
+            {
+                "log_id": "abc-123",
+                "is_anomaly": true,
+                "anomaly_score": 0.83,
+                "confidence": 0.66
+            }
+        ]
+    }
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import time
-from typing import Any, Mapping, Union
+from typing import Any
 
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
-# Default schema for JSON ``instances`` (adjust when training features change).
-expected_features = [
-    "timestamp",
-    "cpu_usage",
-    "memory_usage",
-    "error_rate",
-    "request_latency_ms",
-    "log_level_encoded",
-]
+LEVEL_MAPPING = {"DEBUG": 0, "INFO": 1, "WARN": 2, "WARNING": 2, "ERROR": 3, "FATAL": 4, "CRITICAL": 4}
 
-# Filled in model_fn from the training artifact when present (may include e.g. ``timestamp``).
-_FEATURE_ORDER: list[str] | None = None
+FEATURE_COLUMNS = [
+    "message_length",
+    "has_exception",
+    "has_timeout",
+    "has_connection_error",
+    "level",
+    "service_hash",
+]
 
 JSON_CONTENT = "application/json"
 
+_MODEL: IsolationForest | None = None
+_SCALER: StandardScaler | None = None
+_THRESHOLD: float | None = None
+
 
 def model_fn(model_dir: str) -> IsolationForest:
-    """Load ``model.joblib`` and return the fitted Isolation Forest."""
-    global _FEATURE_ORDER
+    """Load model.joblib and populate the scaler and threshold globals."""
+    global _MODEL, _SCALER, _THRESHOLD
     path = f"{model_dir.rstrip('/')}/model.joblib"
     logger.info("Loading model artifact from %s", path)
     payload = joblib.load(path)
-    if isinstance(payload, dict) and "model" in payload:
-        order = payload.get("feature_columns")
-        if isinstance(order, list) and order:
-            _FEATURE_ORDER = [str(c) for c in order]
-            logger.info("Using feature order from artifact (%s columns).", len(_FEATURE_ORDER))
-        clf = payload["model"]
+    if isinstance(payload, dict):
+        _MODEL = payload["model"]
+        _SCALER = payload.get("scaler")
+        _THRESHOLD = payload.get("threshold")
     else:
-        _FEATURE_ORDER = list(expected_features)
-        clf = payload
-    if not isinstance(clf, IsolationForest):
-        logger.warning("Expected IsolationForest; got %s", type(clf))
-    return clf  # type: ignore[return-value]
+        _MODEL = payload
+    if not isinstance(_MODEL, IsolationForest):
+        logger.warning("Expected IsolationForest; got %s", type(_MODEL))
+    if _SCALER is None:
+        logger.warning("No scaler found in model artifact; scores may differ from training.")
+    return _MODEL
 
 
-def _feature_order() -> list[str]:
-    return _FEATURE_ORDER if _FEATURE_ORDER else list(expected_features)
+def _encode_features(raw: dict[str, Any]) -> list[float]:
+    """Convert a single log features dict to the canonical numeric vector."""
+    msg_len = float(raw.get("message_length", 0))
+    has_exc = float(bool(raw.get("has_exception", False)))
+    has_to = float(bool(raw.get("has_timeout", False)))
+    has_ce = float(bool(raw.get("has_connection_error", False)))
+
+    level_raw = raw.get("level", "INFO")
+    if isinstance(level_raw, (int, float)):
+        level = float(level_raw)
+    else:
+        level = float(LEVEL_MAPPING.get(str(level_raw).upper(), 1))
+
+    service = str(raw.get("service", "unknown"))
+    service_hash = float(hash(service) % 1000)
+
+    return [msg_len, has_exc, has_to, has_ce, level, service_hash]
 
 
-def input_fn(request_body: Union[bytes, str], content_type: str) -> pd.DataFrame:
-    """Parse ``application/json`` with an ``instances`` array into a feature DataFrame."""
+def input_fn(request_body: bytes | str, content_type: str) -> dict:
+    """Parse request JSON into feature matrix and log_ids."""
     ct = (content_type or "").split(";")[0].strip().lower()
     if ct not in (JSON_CONTENT, "text/json"):
-        raise ValueError(
-            f"Unsupported content type {content_type!r}; only {JSON_CONTENT} requests are accepted."
-        )
+        raise ValueError(f"Unsupported content type {content_type!r}; only {JSON_CONTENT} is accepted.")
 
     raw = request_body if isinstance(request_body, str) else request_body.decode("utf-8")
     try:
-        parsed: Mapping[str, Any] = json.loads(raw)
+        parsed = json.loads(raw)
     except json.JSONDecodeError as e:
-        logger.error("Invalid JSON body: %s", e)
         raise ValueError("Request body must be valid JSON.") from e
 
     if not isinstance(parsed, dict) or "instances" not in parsed:
         raise ValueError("JSON payload must be an object with an 'instances' array.")
 
-    rows = parsed["instances"]
-    if not isinstance(rows, list):
-        raise ValueError("'instances' must be a JSON array.")
+    instances = parsed["instances"]
+    if not isinstance(instances, list) or not instances:
+        raise ValueError("'instances' must be a non-empty JSON array.")
 
-    df = pd.DataFrame(rows)
-    required = _feature_order()
+    log_ids = []
+    rows = []
+    for inst in instances:
+        log_ids.append(inst.get("log_id", ""))
+        features_raw = inst.get("features", inst)
+        rows.append(_encode_features(features_raw))
 
-    missing_cols = [c for c in required if c not in df.columns]
-    if "timestamp" in required and "timestamp" in missing_cols:
-        df["timestamp"] = time.time()
-        missing_cols = [c for c in required if c not in df.columns]
-
-    if missing_cols:
-        msg = (
-            f"Missing feature column(s): {missing_cols}. "
-            f"Expected columns: {required}."
-        )
-        logger.error(msg)
-        raise ValueError(msg)
-
-    extra = [c for c in df.columns if c not in required]
-    if extra:
-        logger.warning("Ignoring unexpected input columns: %s", extra)
-    out = df.reindex(columns=required)
-    for col in required:
-        out[col] = pd.to_numeric(out[col], errors="coerce")
-    if out.isnull().any().any():
-        bad = out[out.isnull().any(axis=1)]
-        msg = f"Non-numeric or missing values in features for {len(bad)} instance(s)."
-        logger.error(msg)
-        raise ValueError(msg)
-
-    return out.astype(np.float64)
+    x = np.array(rows, dtype=np.float64)
+    return {"features": x, "log_ids": log_ids}
 
 
-def predict_fn(input_data: pd.DataFrame, model: IsolationForest) -> dict[str, np.ndarray]:
-    """Return anomaly scores (-1/1 labels) from decision function and predict."""
-    arr = input_data.to_numpy(dtype=np.float64, copy=False)
-    scores = model.decision_function(arr)
-    labels = model.predict(arr)
+def predict_fn(input_data: dict, model: IsolationForest) -> dict:
+    """Scale features, run the model, and compute confidence scores."""
+    x = input_data["features"]
+    log_ids = input_data["log_ids"]
+
+    if _SCALER is not None:
+        x = _SCALER.transform(x)
+
+    raw_scores = model.score_samples(x)
+    labels = model.predict(x)
+
+    # Mirror ai-monitoring-ml-service: sigmoid of raw score → anomaly_score (0-1, higher = more anomalous).
+    anomaly_scores = 1.0 / (1.0 + np.exp(raw_scores))
+    # Confidence = how far the score is from the decision boundary (0.5).
+    confidence = np.abs(anomaly_scores - 0.5) * 2.0
+
     return {
-        "anomaly_scores": scores,
-        "predictions": labels,
+        "log_ids": log_ids,
+        "is_anomaly": (labels == -1).tolist(),
+        "anomaly_scores": anomaly_scores.tolist(),
+        "confidence": confidence.tolist(),
     }
 
 
-def output_fn(prediction: dict[str, np.ndarray], accept: str) -> tuple[str, str]:
-    """Serialize per-instance results to JSON when client accepts application/json."""
+def output_fn(prediction: dict, accept: str) -> tuple[str, str]:
+    """Serialize per-instance results to JSON."""
     accept_l = (accept or JSON_CONTENT).split(";")[0].strip().lower()
     if accept_l not in (JSON_CONTENT, "text/json", "*/*"):
         raise ValueError(f"Unsupported Accept type {accept!r}; use {JSON_CONTENT}.")
 
-    scores = np.asarray(prediction["anomaly_scores"], dtype=float)
-    preds = np.asarray(prediction["predictions"], dtype=int)
     out_rows = []
-    for s, p in zip(scores.tolist(), preds.tolist()):
-        out_rows.append(
-            {
-                "anomaly_score": float(s),
-                "is_anomaly": bool(p == -1),
-            }
-        )
-    body = {"predictions": out_rows}
-    return json.dumps(body), JSON_CONTENT
+    for log_id, is_anom, score, conf in zip(
+        prediction["log_ids"],
+        prediction["is_anomaly"],
+        prediction["anomaly_scores"],
+        prediction["confidence"],
+    ):
+        row: dict[str, Any] = {
+            "is_anomaly": bool(is_anom),
+            "anomaly_score": float(score),
+            "confidence": float(conf),
+        }
+        if log_id:
+            row["log_id"] = log_id
+        out_rows.append(row)
+
+    return json.dumps({"predictions": out_rows}), JSON_CONTENT
