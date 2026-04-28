@@ -193,7 +193,7 @@ jobs:
               params.append({"Name": "ModelPackageGroupName", "Value": mpg})
 
           fr = os.environ.get("FORCE_RETRAIN") or "false"
-          tags = [
+          tag_list = [
               {"Key": "GitHubRepository", "Value": os.environ.get("GITHUB_REPOSITORY", "")},
               {"Key": "GitHubRunId", "Value": os.environ.get("GITHUB_RUN_ID", "")},
               {"Key": "force_retrain", "Value": str(fr)},
@@ -202,13 +202,16 @@ jobs:
           kwargs = {
               "PipelineName": name,
               "PipelineExecutionDisplayName": f"gha-{os.environ.get('GITHUB_RUN_ID', 'local')}",
-              "Tags": tags,
           }
           if params:
               kwargs["PipelineParameters"] = params
 
           resp = sm.start_pipeline_execution(**kwargs)
           arn = resp["PipelineExecutionArn"]
+          try:
+              sm.add_tags(ResourceArn=arn, Tags=tag_list)
+          except Exception as exc:
+              print("::warning title=Pipeline execution tags::Could not add tags (SDK/API); execution still started.", exc)
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"pipeline_execution_arn={arn}\n")
           print("Started:", arn)
