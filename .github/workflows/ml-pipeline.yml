@@ -384,6 +384,13 @@ jobs:
           role-to-assume: ${{ env.ML_PIPELINE_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
 
+      # ubuntu-latest ships an old botocore that can reject UpdateModelPackage(ModelPackageArn=...).
+      - name: Install boto3 (match trigger-pipeline)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "boto3>=1.34.0,<2"
+
       - name: Approve latest model package and deploy to endpoint
         id: deploy
         env:
@@ -465,10 +472,20 @@ jobs:
               )
               sys.exit(1)
 
-          mp_arn = summaries[0]["ModelPackageArn"]
-          sm.update_model_package(ModelPackageArn=mp_arn, ModelApprovalStatus="Approved")
+          row = summaries[0]
+          mp_arn = row["ModelPackageArn"]
+          mp_name = (row.get("ModelPackageName") or "").strip()
+          approve_kw = {"ModelApprovalStatus": "Approved"}
+          describe_kw = {}
+          if mp_name:
+              approve_kw["ModelPackageName"] = mp_name
+              describe_kw["ModelPackageName"] = mp_name
+          else:
+              approve_kw["ModelPackageArn"] = mp_arn
+              describe_kw["ModelPackageArn"] = mp_arn
+          sm.update_model_package(**approve_kw)
 
-          pkg = sm.describe_model_package(ModelPackageArn=mp_arn)
+          pkg = sm.describe_model_package(**describe_kw)
           inf = pkg["InferenceSpecification"]["Containers"][0]
           container = {"Image": inf["Image"], "ModelDataUrl": inf["ModelDataUrl"]}
           if inf.get("Environment"):
