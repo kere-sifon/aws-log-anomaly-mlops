@@ -17,7 +17,7 @@ from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo
 from sagemaker.workflow.functions import Join, JsonGet
-from sagemaker.workflow.parameters import ParameterString
+from sagemaker.workflow.parameters import ParameterFloat, ParameterString
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.properties import PropertyFile
 from sagemaker.workflow.step_collections import RegisterModel
@@ -71,6 +71,8 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
         name="ModelPackageGroupName",
         default_value="LogAnomalyDetectors",
     )
+    # Pass 0 from workflow_dispatch to register even when sparse/trivial data yields low F1.
+    f1_approval_threshold = ParameterFloat(name="F1ApprovalThreshold", default_value=0.75)
 
     sklearn_processor = SKLearnProcessor(
         framework_version="1.2-1",
@@ -198,7 +200,7 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
             property_file=evaluation_report,
             json_path="f1_score",
         ),
-        right=0.75,
+        right=f1_approval_threshold,
     )
 
     condition_step = ConditionStep(
@@ -211,7 +213,7 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
 
     pipeline = Pipeline(
         name="log-anomaly-detection-pipeline",
-        parameters=[input_data_uri, output_uri, model_package_group_name],
+        parameters=[input_data_uri, output_uri, model_package_group_name, f1_approval_threshold],
         steps=[
             preprocess_step,
             train_step,

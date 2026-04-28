@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      f1_approval_threshold:
+        description: Min F1 to register a model package (defaults to pipeline default 0.75). Use 0 to register with sparse/low-F1 data.
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: ml-pipeline-${{ github.ref }}
@@ -167,6 +172,8 @@ jobs:
           SAGEMAKER_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN || secrets.SAGEMAKER_EXECUTION_ROLE_ARN }}
           PIPELINE_NAME: ${{ vars.SAGEMAKER_PIPELINE_NAME || 'log-anomaly-detection-pipeline' }}
           MODEL_PACKAGE_GROUP_NAME: ${{ vars.MODEL_PACKAGE_GROUP_NAME || secrets.MODEL_PACKAGE_GROUP_NAME }}
+          # Manual dispatch overrides repo Actions variable when both set.
+          F1_APPROVAL_THRESHOLD: ${{ github.event.inputs.f1_approval_threshold || vars.F1_APPROVAL_THRESHOLD || '' }}
           FORCE_RETRAIN: ${{ github.event.inputs.force_retrain || 'false' }}
         run: |
           python3 - <<'PY'
@@ -191,6 +198,10 @@ jobs:
           mpg = os.environ.get("MODEL_PACKAGE_GROUP_NAME") or ""
           if mpg.strip():
               params.append({"Name": "ModelPackageGroupName", "Value": mpg})
+
+          f1_thr = (os.environ.get("F1_APPROVAL_THRESHOLD") or "").strip()
+          if f1_thr:
+              params.append({"Name": "F1ApprovalThreshold", "Value": f1_thr})
 
           fr = os.environ.get("FORCE_RETRAIN") or "false"
           tag_list = [
@@ -441,7 +452,17 @@ jobs:
               summaries = lst.get("ModelPackageSummaryList") or []
 
           if not summaries:
-              print("No model packages found in group:", group)
+              print(f"No model packages found in group {group!r}.", flush=True)
+              print(
+                  "This usually means RegisterIfF1AtLeast075 never registered anything: evaluate f1_score must "
+                  "meet F1ApprovalThreshold (default 0.75—often failed with sparse or single-row logs). Fixes:\n"
+                  "  1) Upsert pipeline and run with Actions variable F1_APPROVAL_THRESHOLD=0 (or workflow_dispatch "
+                  "input f1_approval_threshold=0), then rerun pipeline + approve job.\n"
+                  "  2) Ensure MODEL_PACKAGE_GROUP_NAME matches pipeline parameter ModelPackageGroupName "
+                  f"(default LogAnomalyDetectors); current value: {group!r}.\n"
+                  "  3) In SageMaker → Pipelines, confirm the execution reached ModelRegistrationStep (not skipped).\n",
+                  flush=True,
+              )
               sys.exit(1)
 
           mp_arn = summaries[0]["ModelPackageArn"]
