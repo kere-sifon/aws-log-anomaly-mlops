@@ -204,6 +204,19 @@ data "aws_iam_policy_document" "github_actions_sagemaker_ml_deploy" {
       "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:endpoint-config/log-anomaly-*",
     ]
   }
+
+  statement {
+    sid    = "SageMakerGithubDeployUpdateEndpoint"
+    effect = "Allow"
+    actions = [
+      "sagemaker:DescribeEndpoint",
+      "sagemaker:UpdateEndpoint",
+    ]
+    resources = [
+      aws_sagemaker_endpoint.log_anomaly_detector.arn,
+      "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:endpoint-config/log-anomaly-*",
+    ]
+  }
 }
 
 data "aws_iam_policy_document" "github_actions_ecr" {
