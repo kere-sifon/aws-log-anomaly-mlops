@@ -14,7 +14,7 @@ from sagemaker.processing import ProcessingInput, ProcessingOutput
 from sagemaker.session import Session
 from sagemaker.sklearn.estimator import SKLearn
 from sagemaker.sklearn.processing import SKLearnProcessor
-from sagemaker.workflow.condition_steps import ConditionStep
+from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo
 from sagemaker.workflow.functions import Join, JsonGet
 from sagemaker.workflow.parameters import ParameterString
