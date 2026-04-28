@@ -34,15 +34,21 @@ Terraform + SageMaker (Python SDK) + GitHub Actions scaffold for training and ho
 | Secret | Used by | Purpose |
 | --- | --- | --- |
 | `TF_API_TOKEN` | `infra.yml` | Terraform Cloud (HCP Terraform) API token for the `cloud` backend |
-| `AWS_TF_ROLE_ARN` | `infra.yml`, `ml-pipeline.yml` | IAM role **ARN** GitHub Actions assumes via OIDC. Must be able to **create** this stack (IAM OIDC provider, roles, S3, SNS, CloudWatch, SageMaker). See **IAM for Terraform CI** below. |
+| `AWS_TF_ROLE_ARN` | `infra.yml` only | Bootstrap IAM role ARN for **Terraform**: must allow creating/updating IAM, S3, SNS, etc. Often a broad role such as **`GithubActions`**. Not used by **`ml-pipeline.yml`**. |
 
-The ML workflow also needs repository variable **`SAGEMAKER_EXECUTION_ROLE_ARN`** (the role **SageMaker** assumes); set it from `terraform output -raw sagemaker_execution_role_arn` after apply.
+The ML SageMaker workflow assumes a **different** role (Terraform-managed, least-privilege for pipelines):
+
+| Variable or Secret | Used by | Purpose |
+| --- | --- | --- |
+| `AWS_ML_PIPELINE_ROLE_ARN` | `ml-pipeline.yml` | **Required.** Same value as **`terraform output -raw github_actions_role_arn`** (role `aws_iam_role.github_actions` in `iam.tf`). This role has **`sagemaker:CreatePipeline`** and project S3 access. Do **not** reuse **`AWS_TF_ROLE_ARN`** here — that bootstrap role (`GithubActions`/admin) does **not** receive those policies unless you attach them manually. |
+
+The ML workflow still needs **`SAGEMAKER_EXECUTION_ROLE_ARN`** (**Variable** or **Secret**) — the IAM role **SageMaker jobs** assume — from **`terraform output -raw sagemaker_execution_role_arn`**.
 
 ### IAM for Terraform CI (`AWS_TF_ROLE_ARN`)
 
 Terraform in this repo **creates** AWS resources including **`iam:CreateOpenIDConnectProvider`**, **`s3:CreateBucket`**, **`sns:CreateTopic`**, **`logs:CreateLogGroup`**, and SageMaker resources. The IAM role referenced by **`AWS_TF_ROLE_ARN`** must allow those actions.
 
-The role Terraform **defines** in `terraform/iam.tf` (`github_actions`, output `github_actions_role_arn`) is **scoped** to SageMaker/S3 for day‑to‑day pipeline use and **does not** grant IAM or bucket **creation** for the Terraform runner. **Do not** set `AWS_TF_ROLE_ARN` to that output for the **infra** workflow — apply would fail whenever IAM or new buckets must be created or changed.
+The role Terraform **defines** in `terraform/iam.tf` (`aws_iam_role.github_actions`, output **`github_actions_role_arn`**) is **scoped** to SageMaker/S3 for **`ml-pipeline.yml`**. Set it as **`AWS_ML_PIPELINE_ROLE_ARN`** (Actions Variable or Secret). **Do not** point **`AWS_TF_ROLE_ARN`** (infra bootstrap) at that role — **`infra.yml`** apply would lack permissions for IAM/OpenID Provider/S3 creates. Conversely, **`AWS_TF_ROLE_ARN`** bootstrap roles typically **do not** include **`sagemaker:CreatePipeline`**; use **`AWS_ML_PIPELINE_ROLE_ARN`** for the ML workflow.
 
 Use a **dedicated CI / bootstrap role** trusted by GitHub OIDC (the role you name `GithubActions` or similar) and attach a policy that allows Terraform to manage this stack. Prefer a **scoped** JSON policy (explicit actions and ARNs for this module); you can keep it under **`terraform/policies/`** locally — that directory is **gitignored** so account-specific ARNs are not committed. For a sandbox only, **AdministratorAccess** is an alternative. In IAM: **Policies → Create policy → JSON**, paste your policy, then attach it to the role assumed by `AWS_TF_ROLE_ARN`.
 
