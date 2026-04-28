@@ -474,9 +474,9 @@ jobs:
               sys.exit(1)
 
           mp_arn = summaries[0]["ModelPackageArn"]
-          sm.update_model_package(ModelPackageArn=mp_arn, ModelApprovalStatus="Approved")
+          sm.update_model_package(ModelPackageName=mp_arn, ModelApprovalStatus="Approved")
 
-          pkg = sm.describe_model_package(ModelPackageArn=mp_arn)
+          pkg = sm.describe_model_package(ModelPackageName=mp_arn)
           inf = pkg["InferenceSpecification"]["Containers"][0]
           container = {"Image": inf["Image"], "ModelDataUrl": inf["ModelDataUrl"]}
           if inf.get("Environment"):
