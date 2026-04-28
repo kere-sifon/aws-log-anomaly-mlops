@@ -150,10 +150,12 @@ def _coerce_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         feats = _coerce_features_dynamic(work)
         cols = list(feats.columns)
 
-    min_rows = 2
-    if len(feats) < min_rows:
-        raise ValueError(
-            f"Too few valid rows after cleaning: {len(feats)} (need at least {min_rows})."
+    if len(feats) == 0:
+        raise ValueError("No valid rows after cleaning.")
+    if len(feats) == 1:
+        logger.warning(
+            "Only 1 row after feature cleaning — will duplicate before train/validation split; "
+            "metrics will be unreliable."
         )
     if len(feats) < 10:
         logger.warning(
@@ -198,6 +200,16 @@ def main() -> None:
         feats_df, feature_columns = _coerce_features(df)
         x_all = feats_df.to_numpy(dtype=np.float64, copy=False)
 
+    # train_test_split needs at least 2 rows; preprocess can leave a single training row when
+    # holdout consumes the rest — duplicate so sklearn/split succeeds (metrics still unreliable).
+    if x_all.shape[0] < 2:
+        logger.warning(
+            "Only %s training row(s); duplicating so train/validation split succeeds "
+            "(metrics will be unreliable).",
+            x_all.shape[0],
+        )
+        x_all = np.vstack([x_all, x_all])
+
     rng_split = np.random.RandomState(args.random_state)
     x_train, x_val = train_test_split(
         x_all,
@@ -207,7 +219,8 @@ def main() -> None:
     )
 
     n_train, n_val = x_train.shape[0], x_val.shape[0]
-    max_samples = min(args.max_samples, max(2, n_train))
+    # IsolationForest max_samples cannot exceed n_train; avoid max(2, n_train) alone when n_train==1.
+    max_samples = min(args.max_samples, max(2, n_train), n_train)
 
     model = IsolationForest(
         n_estimators=args.n_estimators,
