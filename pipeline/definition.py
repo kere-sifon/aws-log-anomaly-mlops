@@ -81,8 +81,7 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
     )
 
     preprocess_step_args = sklearn_processor.run(
-        code="preprocess.py",
-        source_dir="pipeline",
+        code="pipeline/preprocess.py",
         inputs=[
             ProcessingInput(
                 source=input_data_uri,
@@ -147,8 +146,7 @@ def build_pipeline(execution_role_arn: str) -> Pipeline:
     )
 
     evaluate_step_args = evaluate_processor.run(
-        code="evaluate.py",
-        source_dir="pipeline",
+        code="pipeline/evaluate.py",
         inputs=[
             ProcessingInput(
                 source=train_step.properties.ModelArtifacts.S3ModelArtifacts,
