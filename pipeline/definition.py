@@ -26,13 +26,33 @@ from sagemaker.workflow.steps import ProcessingStep, TrainingStep
 logger = logging.getLogger(__name__)
 
 
+def _sagemaker_session() -> Session:
+    """Build a SageMaker SDK session without forcing creation of the default ``sagemaker-{region}-{account}`` bucket.
+
+    Set ``SAGEMAKER_DEFAULT_BUCKET`` to an existing bucket the caller can use (typically Terraform
+    ``aws_s3_bucket.processed_features`` name). Narrow CI/GitHub IAM roles rarely have ``s3:CreateBucket``
+    on the auto-generated SageMaker bucket, so upserts may fail unless this is set.
+    """
+    explicit = (os.environ.get("SAGEMAKER_DEFAULT_BUCKET") or "").strip()
+    if os.environ.get("GITHUB_ACTIONS") == "true" and not explicit:
+        raise RuntimeError(
+            "Set repository variable SAGEMAKER_DEFAULT_BUCKET to your pipeline root S3 bucket name "
+            "(e.g. Terraform output s3_processed_features_bucket_name). "
+            "That prevents the SageMaker SDK from trying to provision the account-wide SageMaker "
+            "default bucket, which Actions OIDC roles are not usually allowed to create."
+        )
+    if explicit:
+        return Session(default_bucket=explicit)
+    return Session()
+
+
 def build_pipeline(execution_role_arn: str) -> Pipeline:
     """Construct the log-anomaly SageMaker Pipeline (SDK 2.x)."""
     role = execution_role_arn.strip()
     if not role:
         raise ValueError("execution_role_arn must be a non-empty SageMaker execution role ARN.")
 
-    sess = Session()
+    sess = _sagemaker_session()
 
     default_bucket = sess.default_bucket()
     if not default_bucket:

@@ -66,7 +66,8 @@ If you name roles differently, update the workflows to match.
 | `MODEL_PACKAGE_GROUP_NAME` | `ml-pipeline.yml` | Model package group (e.g. `LogAnomalyDetectors`); must match `pipeline/definition.py` |
 | `SAGEMAKER_PIPELINE_NAME` | `ml-pipeline.yml` | SageMaker Pipeline name (defaults to `log-anomaly-detection-pipeline` if unset) |
 | `SAGEMAKER_ENDPOINT_NAME` | `ml-pipeline.yml` | Live endpoint to update after approval (e.g. Terraform output) |
-| `SAGEMAKER_EXECUTION_ROLE_ARN` | `ml-pipeline.yml` | SageMaker execution role ARN (`sagemaker_execution` in Terraform): pipeline `upsert`, training, and `CreateModel` |
+| `SAGEMAKER_EXECUTION_ROLE_ARN` | `ml-pipeline.yml` | SageMaker execution role ARN (`sagemaker_execution` in Terraform): pipeline `upsert`, training, and `CreateModel`. You can store this ARN as either an Actions **Secret** or a **Variable** (the workflow checks both). |
+| `SAGEMAKER_DEFAULT_BUCKET` | `ml-pipeline.yml` | **Required on GitHub Actions** for pipeline `upsert`: existing S3 bucket name (typically Terraform **`s3_processed_features_bucket_name`**). Stops the SDK from auto-using `sagemaker-{region}-{account}` (OIDC roles usually lack `s3:CreateBucket` there). |
 | `SAGEMAKER_INFERENCE_INSTANCE_TYPE` | `ml-pipeline.yml` | Optional; defaults to `ml.t2.medium` |
 
 ## Local quick checks
@@ -75,6 +76,7 @@ If you name roles differently, update the workflows to match.
 cd terraform && terraform fmt -recursive && terraform validate
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+SAGEMAKER_DEFAULT_BUCKET=YOUR_PROCESSED_FEATURES_BUCKET \
 SAGEMAKER_ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/YOUR_SAGEMAKER_EXECUTION_ROLE \
   python -c "import os; from pipeline.definition import build_pipeline; build_pipeline(os.environ['SAGEMAKER_ROLE_ARN'])"
 python training/train.py  # writes to SM paths if unset; uses synthetic data
